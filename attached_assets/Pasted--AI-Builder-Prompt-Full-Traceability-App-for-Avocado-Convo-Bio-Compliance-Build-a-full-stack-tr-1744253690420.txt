@@ -1,0 +1,114 @@
+✅ AI Builder Prompt – Full Traceability App for Avocado (Convo Bio Compliance)
+Build a full-stack traceability web application for avocado production farms, compliant with Convo Bio standards. The app must allow daily tracking of the product lifecycle from harvest to client delivery, with barcode-based tracking and detailed PDF reports. Here are the requirements:
+
+🧱 1. General Features:
+Multi-farm management: Each farm has a name and unique code.
+
+Daily product tracking: Each lot of avocado is tracked per day.
+
+All stages must be logged: harvesting, packaging, cooling, shipping, delivery.
+
+Web-based interface (mobile responsive).
+
+Support for multiple users: farm operators, managers, and clients.
+
+🧾 2. Data Entry Module:
+Input form for:
+
+Farm name (select or create new).
+
+Lot number (auto-generated per day).
+
+Date of operation.
+
+Type of activity: harvest, cooling, shipping, delivery.
+
+Quantity.
+
+Operator name or ID.
+
+Assign a unique barcode to each lot.
+
+Upload option for additional files (e.g., certificates, temperature logs, etc.).
+
+📦 3. Lot & Barcode Management:
+Each lot must have:
+
+Auto-generated barcode.
+
+Printable label (PDF) with:
+
+Farm info
+
+Lot number
+
+Barcode
+
+Harvest date
+
+Expiration date (optional)
+
+Barcode scanner interface (webcam/mobile camera compatible).
+
+📊 4. Traceability & Visualization:
+Dashboard with filters:
+
+By date
+
+By farm
+
+By lot
+
+By delivery status
+
+Each lot shows the full trace from start to finish:
+
+Harvest → Cooling → Shipping → Client Delivery
+
+📤 5. PDF Generator:
+When a barcode is scanned, the system generates a downloadable PDF report showing:
+
+Farm name & code
+
+Full trace of the lot with dates
+
+Quantity
+
+All timestamps (harvest, cooled, shipped, received)
+
+Optional signature of operator or delivery person
+
+PDF should be clean, print-ready, and include the same barcode for visual confirmation.
+
+🔐 6. Authentication & Access Control:
+Admin panel (create/edit farms, manage users)
+
+Farm operators: can input/edit data
+
+Clients: can only scan barcode and see report
+
+Secure login with roles
+
+🛠️ 7. Tech Stack (Preferred):
+Frontend: React / Vue (mobile responsive)
+
+Backend: Node.js / Django / Firebase
+
+Database: PostgreSQL / Firestore
+
+Barcode Generator: Any standard JS or backend package
+
+PDF Generator: Server-side (e.g., Puppeteer, wkhtmltopdf, or PDFKit)
+
+Hosting: Cloud-ready (e.g., Vercel, Heroku, or Firebase Hosting)
+
+🌐 Languages:
+App in French or Moroccan Arabic (Darija) depending on user role
+
+PDF export in French
+
+✅ Final Goal:
+End-to-end traceability system from farm to supermarket
+
+Any client scanning a barcode gets a transparent product history in a clear PDF
+
