@@ -7,8 +7,15 @@ import FilterBar from "@/components/dashboard/filter-bar";
 import LotTable from "@/components/dashboard/lot-table";
 import { Plus, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/use-auth";
 import { Lot, Farm } from "@shared/schema";
+
+// Define StatsData interface
+interface StatsData {
+  totalLots: number;
+  activeFarms: number;
+  inTransit: number;
+  deliveredToday: number;
+}
 
 interface FilterState {
   search: string;
@@ -18,16 +25,18 @@ interface FilterState {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  // Create a fake admin user since we have removed authentication
+  const user = { id: 1, username: 'admin', role: 'admin', fullName: 'Admin User' };
+  
   const [filters, setFilters] = useState<FilterState>({
     search: "",
-    farmId: "",
-    status: "",
+    farmId: "all",
+    status: "all",
     date: "",
   });
   
   // Fetch stats
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery<StatsData>({
     queryKey: ["/api/stats"],
   });
   
@@ -40,8 +49,12 @@ export default function DashboardPage() {
   const getQueryString = () => {
     const params = new URLSearchParams();
     
-    if (filters.farmId) params.append("farmId", filters.farmId);
-    if (filters.status) params.append("status", filters.status);
+    // Only add farmId if it's a valid id (not "all")
+    if (filters.farmId && filters.farmId !== "all") params.append("farmId", filters.farmId);
+    
+    // Only add status if it's a valid status (not "all")
+    if (filters.status && filters.status !== "all") params.append("status", filters.status);
+    
     if (filters.date) params.append("date", filters.date);
     
     return params.toString();
