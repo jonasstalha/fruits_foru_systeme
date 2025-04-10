@@ -1,63 +1,62 @@
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
 import {
   Home,
   PlusSquare,
   QrCode,
   FileText,
-  Settings,
+  ChartBar,
   Tractor,
   Users,
-  LogOut,
-  Leaf
+  PackageCheck,
+  Leaf,
+  FileBarChart,
+  BarChart3,
+  Warehouse,
+  Map
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
 export default function Sidebar() {
   const [location] = useLocation();
-  const { user, logoutMutation } = useAuth();
   
   const isActive = (path: string) => {
     return location === path;
   };
   
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
-  };
-  
-  // Menu items with access control
+  // All menu items with icons
   const menuItems = [
     {
       title: "Tableau de Bord",
       icon: <Home className="h-5 w-5 mr-2" />,
       path: "/",
-      access: ["admin", "operator", "client"]
     },
     {
       title: "Nouvelle Entrée",
       icon: <PlusSquare className="h-5 w-5 mr-2" />,
       path: "/new-entry",
-      access: ["admin", "operator"]
     },
     {
       title: "Scanner Code",
       icon: <QrCode className="h-5 w-5 mr-2" />,
       path: "/scan",
-      access: ["admin", "operator", "client"]
+    }
+  ];
+  
+  const traceabilityItems = [
+    {
+      title: "Gestion Lots",
+      icon: <PackageCheck className="h-5 w-5 mr-2" />,
+      path: "/lots",
     },
     {
-      title: "Rapports",
+      title: "Rapports PDF",
       icon: <FileText className="h-5 w-5 mr-2" />,
       path: "/reports",
-      access: ["admin", "operator"]
     },
     {
-      title: "Paramètres",
-      icon: <Settings className="h-5 w-5 mr-2" />,
-      path: "/settings",
-      access: ["admin"]
+      title: "Statistiques",
+      icon: <BarChart3 className="h-5 w-5 mr-2" />,
+      path: "/statistics",
     }
   ];
   
@@ -66,107 +65,100 @@ export default function Sidebar() {
       title: "Gérer Fermes",
       icon: <Tractor className="h-5 w-5 mr-2" />,
       path: "/farms",
-      access: ["admin"]
     },
     {
       title: "Utilisateurs",
       icon: <Users className="h-5 w-5 mr-2" />,
       path: "/users",
-      access: ["admin"]
+    },
+    {
+      title: "Entrepôts",
+      icon: <Warehouse className="h-5 w-5 mr-2" />,
+      path: "/warehouses",
+    },
+    {
+      title: "Cartographie",
+      icon: <Map className="h-5 w-5 mr-2" />,
+      path: "/map",
     }
   ];
-  
-  // Filter menu items based on user role
-  const filteredMenuItems = menuItems.filter(item => 
-    item.access.includes(user?.role || '')
-  );
-  
-  const filteredAdminItems = adminItems.filter(item => 
-    item.access.includes(user?.role || '')
-  );
-  
-  const handleLogout = () => {
-    logoutMutation.mutate();
-  };
   
   return (
     <aside className="bg-neutral-800 text-white w-64 flex-shrink-0 h-screen flex flex-col">
       {/* Sidebar Header */}
       <div className="p-4 border-b border-neutral-700">
         <div className="flex items-center space-x-2">
-          <Leaf className="h-6 w-6 text-primary" />
+          <Leaf className="h-6 w-6 text-green-400" />
           <h1 className="font-bold text-xl">Convo Bio</h1>
         </div>
         <p className="text-neutral-400 text-sm">Traçabilité d'Avocat</p>
       </div>
       
       {/* Navigation */}
-      <nav className="p-2 flex-grow">
+      <nav className="p-2 flex-grow overflow-y-auto">
         <div className="py-2 px-4 text-xs text-neutral-500 uppercase">Menu Principal</div>
         <ul>
-          {filteredMenuItems.map((item, index) => (
-            <li key={index}>
+          {menuItems.map((item, index) => (
+            <li key={index} className="mb-1">
               <Link href={item.path}>
-                <a className={cn(
-                  "flex items-center p-3 rounded",
+                <div className={cn(
+                  "flex items-center p-3 rounded-md transition-colors cursor-pointer",
                   isActive(item.path) 
-                    ? "bg-primary-700 text-white" 
+                    ? "bg-green-700 text-white" 
                     : "hover:bg-neutral-700 text-neutral-300"
                 )}>
                   {item.icon}
                   <span>{item.title}</span>
-                </a>
+                </div>
               </Link>
             </li>
           ))}
         </ul>
         
-        {filteredAdminItems.length > 0 && (
-          <>
-            <div className="mt-6 py-2 px-4 text-xs text-neutral-500 uppercase">Administration</div>
-            <ul>
-              {filteredAdminItems.map((item, index) => (
-                <li key={index}>
-                  <Link href={item.path}>
-                    <a className={cn(
-                      "flex items-center p-3 rounded",
-                      isActive(item.path) 
-                        ? "bg-primary-700 text-white" 
-                        : "hover:bg-neutral-700 text-neutral-300"
-                    )}>
-                      {item.icon}
-                      <span>{item.title}</span>
-                    </a>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+        <div className="mt-6 py-2 px-4 text-xs text-neutral-500 uppercase">Traçabilité</div>
+        <ul>
+          {traceabilityItems.map((item, index) => (
+            <li key={index} className="mb-1">
+              <Link href={item.path}>
+                <div className={cn(
+                  "flex items-center p-3 rounded-md transition-colors cursor-pointer",
+                  isActive(item.path) 
+                    ? "bg-green-700 text-white" 
+                    : "hover:bg-neutral-700 text-neutral-300"
+                )}>
+                  {item.icon}
+                  <span>{item.title}</span>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        
+        <div className="mt-6 py-2 px-4 text-xs text-neutral-500 uppercase">Administration</div>
+        <ul>
+          {adminItems.map((item, index) => (
+            <li key={index} className="mb-1">
+              <Link href={item.path}>
+                <div className={cn(
+                  "flex items-center p-3 rounded-md transition-colors cursor-pointer",
+                  isActive(item.path) 
+                    ? "bg-green-700 text-white" 
+                    : "hover:bg-neutral-700 text-neutral-300"
+                )}>
+                  {item.icon}
+                  <span>{item.title}</span>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </nav>
       
-      {/* User Menu */}
+      {/* Bottom Section with Version and Info */}
       <div className="p-4 border-t border-neutral-700">
-        <div className="flex items-center space-x-3">
-          <Avatar className="bg-primary-500 h-10 w-10">
-            <AvatarFallback>{user && getInitials(user.fullName)}</AvatarFallback>
-          </Avatar>
-          <div className="flex-grow">
-            <div className="font-medium">{user?.fullName}</div>
-            <div className="text-sm text-neutral-400">
-              {user?.role === 'admin' && 'Administrateur'}
-              {user?.role === 'operator' && 'Opérateur'}
-              {user?.role === 'client' && 'Client'}
-            </div>
-          </div>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="text-neutral-400 hover:text-white"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-5 w-5" />
-          </Button>
+        <div className="text-center">
+          <div className="text-sm text-neutral-400">Version 1.0</div>
+          <div className="text-xs text-neutral-500 mt-1">© 2025 Convo Bio Compliance</div>
         </div>
       </div>
     </aside>
