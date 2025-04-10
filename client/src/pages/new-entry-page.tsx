@@ -78,6 +78,12 @@ export default function NewEntryPage() {
   const activityType = form.watch("activityType");
   const isHarvest = activityType === "harvest";
   
+  // Query to get lots for the lot selection dropdown
+  const { data: existingLots, isLoading: lotsLoading } = useQuery<any[]>({
+    queryKey: ["/api/lots"],
+    enabled: activityType !== "harvest", // Only fetch lots when not in harvest mode
+  });
+  
   // Fetch lot number for non-harvest activities
   const [lotId, setLotId] = useState<string>("");
   
@@ -247,19 +253,39 @@ export default function NewEntryPage() {
                           <p className="text-xs text-neutral-500 mt-1">Auto-généré en fonction de la date</p>
                         </div>
                       ) : (
-                        <FormField
-                          control={form.control}
-                          name="lotNumber"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Numéro de Lot <span className="text-red-500">*</span></FormLabel>
-                              <FormControl>
-                                <Input placeholder="AV-YYMMDD-XXX" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
+                        <div>
+                          <FormLabel>Sélectionner un Lot <span className="text-red-500">*</span></FormLabel>
+                          <Select 
+                            value={lotId} 
+                            onValueChange={(value) => {
+                              setLotId(value);
+                              // Find the lot from the existingLots array
+                              const selectedLot = existingLots?.find(lot => lot.id.toString() === value);
+                              if (selectedLot) {
+                                form.setValue('lotNumber', selectedLot.lotNumber);
+                              }
+                            }}
+                            disabled={lotsLoading}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sélectionner un lot" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {existingLots?.map((lot) => (
+                                <SelectItem key={lot.id} value={lot.id.toString()}>
+                                  {lot.lotNumber} - {new Date(lot.harvestDate).toLocaleDateString()}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {lotId && (
+                            <div className="mt-2">
+                              <span className="text-xs text-neutral-500">
+                                Numéro de lot: {form.getValues('lotNumber')}
+                              </span>
+                            </div>
                           )}
-                        />
+                        </div>
                       )}
                     </div>
                   </div>
