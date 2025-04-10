@@ -14,12 +14,22 @@ import {
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Setup authentication routes
-  setupAuth(app);
-
-  // API routes for authenticated users
+  // No authentication setup
+  
+  // Create a fake user for the system since we have no auth
+  const fakeUser = {
+    id: 1,
+    username: "system",
+    fullName: "System User",
+    role: "admin",
+    password: "",
+    createdAt: new Date()
+  };
+  
+  // Simple middleware that always passes through (no auth check)
   const requireAuth = (req: Express.Request, res: Express.Response, next: Express.NextFunction) => {
-    if (!req.isAuthenticated()) return res.sendStatus(401);
+    // Attach a fake user to the request to make APIs work
+    (req as any).user = fakeUser;
     next();
   };
 

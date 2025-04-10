@@ -13,13 +13,12 @@ import UsersPage from "@/pages/users-page";
 function Router() {
   return (
     <Switch>
-      <ProtectedRoute path="/" component={DashboardPage} />
-      <ProtectedRoute path="/new-entry" component={NewEntryPage} />
-      <ProtectedRoute path="/scan" component={ScanPage} />
-      <ProtectedRoute path="/lots/:id" component={LotDetailPage} />
-      <ProtectedRoute path="/farms" component={FarmsPage} />
-      <ProtectedRoute path="/users" component={UsersPage} />
-      <Route path="/auth" component={AuthPage} />
+      <Route path="/" component={DashboardPage} />
+      <Route path="/new-entry" component={NewEntryPage} />
+      <Route path="/scan" component={ScanPage} />
+      <Route path="/lots/:id" component={LotDetailPage} />
+      <Route path="/farms" component={FarmsPage} />
+      <Route path="/users" component={UsersPage} />
       <Route component={NotFound} />
     </Switch>
   );

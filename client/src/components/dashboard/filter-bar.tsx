@@ -70,7 +70,7 @@ export default function FilterBar({ filters, onFilterChange, farms, isLoading }:
                   <SelectValue placeholder="Toutes les fermes" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Toutes les fermes</SelectItem>
+                  <SelectItem value="all">Toutes les fermes</SelectItem>
                   {farms.map((farm) => (
                     <SelectItem key={farm.id} value={farm.id.toString()}>
                       {farm.name}
@@ -89,7 +89,7 @@ export default function FilterBar({ filters, onFilterChange, farms, isLoading }:
                 <SelectValue placeholder="Tous statuts" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Tous statuts</SelectItem>
+                <SelectItem value="all">Tous statuts</SelectItem>
                 <SelectItem value="harvested">Récolté</SelectItem>
                 <SelectItem value="packaged">Emballé</SelectItem>
                 <SelectItem value="cooled">Refroidi</SelectItem>
