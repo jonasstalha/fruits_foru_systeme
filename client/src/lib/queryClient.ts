@@ -12,7 +12,11 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
+  // Make sure the URL always starts with http://localhost:5000 for development
+  const apiUrl = url.startsWith('http') ? url : `http://localhost:5000${url}`;
+  console.log(`Making API request: ${method} ${apiUrl}`);
+  
+  const res = await fetch(apiUrl, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
@@ -29,16 +33,24 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey[0] as string, {
+    const url = queryKey[0] as string;
+    // Make sure the URL always starts with http://localhost:5000 for development
+    const apiUrl = url.startsWith('http') ? url : `http://localhost:5000${url}`;
+    console.log(`Making query API request: GET ${apiUrl}`);
+    
+    const res = await fetch(apiUrl, {
       credentials: "include",
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+      console.log(`Auth request returned 401, returning null as configured`);
       return null;
     }
 
     await throwIfResNotOk(res);
-    return await res.json();
+    const data = await res.json();
+    console.log(`API response data:`, data);
+    return data;
   };
 
 export const queryClient = new QueryClient({
