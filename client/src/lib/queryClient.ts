@@ -12,11 +12,10 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  // Make sure the URL always starts with http://localhost:5000 for development
-  const apiUrl = url.startsWith('http') ? url : `http://localhost:5000${url}`;
-  console.log(`Making API request: ${method} ${apiUrl}`);
+  // Use relative URLs to avoid CORS issues
+  console.log(`Making API request: ${method} ${url}`);
   
-  const res = await fetch(apiUrl, {
+  const res = await fetch(url, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
@@ -33,12 +32,17 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const url = queryKey[0] as string;
-    // Make sure the URL always starts with http://localhost:5000 for development
-    const apiUrl = url.startsWith('http') ? url : `http://localhost:5000${url}`;
-    console.log(`Making query API request: GET ${apiUrl}`);
+    // Get the URL from the queryKey
+    let url = queryKey[0] as string;
     
-    const res = await fetch(apiUrl, {
+    // Remove any http://localhost:5000 prefix if it's there (log message might be showing it)
+    if (url.startsWith('http://localhost:5000')) {
+      url = url.substring('http://localhost:5000'.length);
+    }
+    
+    console.log(`Making query API request: GET ${url}`);
+    
+    const res = await fetch(url, {
       credentials: "include",
     });
 
