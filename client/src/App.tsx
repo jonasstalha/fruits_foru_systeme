@@ -9,7 +9,6 @@ import ScanPage from "@/pages/scan-page";
 import LotDetailPage from "@/pages/lot-detail-page";
 import FarmsPage from "@/pages/farms-page";
 import UsersPage from "@/pages/users-page";
-import { AuthProvider } from "./hooks/use-auth";
 
 function Router() {
   return (
@@ -28,10 +27,10 @@ function Router() {
 
 function App() {
   return (
-    <AuthProvider>
+    <>
       <Router />
       <Toaster />
-    </AuthProvider>
+    </>
   );
 }
 

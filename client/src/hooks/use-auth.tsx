@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext } from "react";
+import { createContext, ReactNode, useContext, useState, useEffect } from "react";
 import {
   useQuery,
   useMutation,
@@ -19,9 +19,64 @@ type AuthContextType = {
 
 type LoginData = Pick<InsertUser, "username" | "password">;
 
-export const AuthContext = createContext<AuthContextType | null>(null);
+// Create a default context value with empty functions to avoid null checks
+const defaultContextValue: AuthContextType = {
+  user: null,
+  isLoading: false,
+  error: null,
+  loginMutation: {
+    mutate: () => {},
+    mutateAsync: async () => ({ id: 0, username: '', fullName: '', role: '', password: '', createdAt: new Date() }),
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    failureCount: 0,
+    failureReason: null,
+    error: null,
+    data: undefined,
+    variables: undefined,
+    status: 'idle',
+    submittedAt: 0,
+    reset: () => {},
+  } as any,
+  logoutMutation: {
+    mutate: () => {},
+    mutateAsync: async () => {},
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    failureCount: 0, 
+    failureReason: null,
+    error: null,
+    data: undefined,
+    variables: undefined,
+    status: 'idle',
+    submittedAt: 0,
+    reset: () => {},
+  } as any,
+  registerMutation: {
+    mutate: () => {},
+    mutateAsync: async () => ({ id: 0, username: '', fullName: '', role: '', password: '', createdAt: new Date() }),
+    isPending: false,
+    isSuccess: false,
+    isError: false,
+    failureCount: 0,
+    failureReason: null,
+    error: null,
+    data: undefined,
+    variables: undefined,
+    status: 'idle',
+    submittedAt: 0,
+    reset: () => {},
+  } as any,
+};
+
+export const AuthContext = createContext<AuthContextType>(defaultContextValue);
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
+  
+  // Use query to fetch the current user
   const {
     data: user,
     error,
@@ -31,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: getQueryFn({ on401: "returnNull" }),
   });
 
+  // Login mutation
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {
       const res = await apiRequest("POST", "/api/login", credentials);
@@ -52,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  // Register mutation
   const registerMutation = useMutation({
     mutationFn: async (credentials: InsertUser) => {
       const res = await apiRequest("POST", "/api/register", credentials);
@@ -73,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  // Logout mutation
   const logoutMutation = useMutation({
     mutationFn: async () => {
       await apiRequest("POST", "/api/logout");
