@@ -1,115 +1,215 @@
-import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Users table for auth
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  fullName: text("full_name").notNull(),
-  role: text("role").notNull().default("operator"), // admin, operator, client
+// Base types for common fields
+export const baseSchema = {
+  id: z.number(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime().optional(),
+};
+
+// User related schemas
+export const userRoleSchema = z.enum(["admin", "operator", "client"]);
+export type UserRole = z.infer<typeof userRoleSchema>;
+
+export const userSchema = z.object({
+  ...baseSchema,
+  username: z.string().min(3).max(50),
+  fullName: z.string().min(2).max(100),
+  role: userRoleSchema,
+  password: z.string().min(6),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-  fullName: true,
-  role: true,
-});
-
-// Farms table
-export const farms = pgTable("farms", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  code: text("code").notNull().unique(),
-  active: boolean("active").notNull().default(true),
-});
-
-export const insertFarmSchema = createInsertSchema(farms).pick({
-  name: true,
-  code: true,
-  active: true,
-});
-
-// Lots table
-export const lots = pgTable("lots", {
-  id: serial("id").primaryKey(),
-  lotNumber: text("lot_number").notNull().unique(),
-  farmId: integer("farm_id").notNull(),
-  harvestDate: timestamp("harvest_date").notNull(),
-  initialQuantity: integer("initial_quantity").notNull(), // in kg
-  currentStatus: text("current_status").notNull().default("harvested"), // harvested, packaged, cooled, shipped, delivered
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const insertLotSchema = createInsertSchema(lots).pick({
-  lotNumber: true,
-  farmId: true,
-  harvestDate: true,
-  initialQuantity: true,
-  currentStatus: true,
-});
-
-// Lot activities table
-export const lotActivities = pgTable("lot_activities", {
-  id: serial("id").primaryKey(),
-  lotId: integer("lot_id").notNull(),
-  activityType: text("activity_type").notNull(), // harvest, package, cool, ship, deliver
-  datePerformed: timestamp("date_performed").notNull(),
-  quantity: integer("quantity"), // in kg, may change at different stages
-  operatorName: text("operator_name").notNull(),
-  notes: text("notes"),
-  attachments: text("attachments").array(), // File paths/URLs
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
-
-export const insertLotActivitySchema = createInsertSchema(lotActivities).pick({
-  lotId: true,
-  activityType: true,
-  datePerformed: true,
-  quantity: true,
-  operatorName: true,
-  notes: true,
-  attachments: true,
-});
-
-// Define types from schemas
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
-
-export type InsertFarm = z.infer<typeof insertFarmSchema>;
-export type Farm = typeof farms.$inferSelect;
-
-export type InsertLot = z.infer<typeof insertLotSchema>;
-export type Lot = typeof lots.$inferSelect;
-
-export type InsertLotActivity = z.infer<typeof insertLotActivitySchema>;
-export type LotActivity = typeof lotActivities.$inferSelect;
-
-// Enhanced validation schema for forms
-export const loginSchema = z.object({
-  username: z.string().min(3, "Nom d'utilisateur doit contenir au moins 3 caractères"),
-  password: z.string().min(6, "Mot de passe doit contenir au moins 6 caractères"),
-});
-
-export const registerSchema = insertUserSchema.extend({
-  password: z.string().min(6, "Mot de passe doit contenir au moins 6 caractères"),
-  confirmPassword: z.string(),
-}).refine(data => data.password === data.confirmPassword, {
+export const registerSchema = userSchema.omit({ id: true, createdAt: true, updatedAt: true }).extend({
+  confirmPassword: z.string().min(6),
+}).refine((data) => data.password === data.confirmPassword, {
   message: "Les mots de passe ne correspondent pas",
   path: ["confirmPassword"],
 });
 
-export const farmSchema = insertFarmSchema.extend({
-  code: z.string().regex(/^[A-Z0-9]{2,10}$/, "Code doit être entre 2-10 caractères alphanumériques"),
+export type User = z.infer<typeof userSchema>;
+
+// Farm related schemas
+export const farmSchema = z.object({
+  ...baseSchema,
+  name: z.string().min(2).max(100),
+  location: z.string().min(2).max(200),
+  description: z.string().max(500).optional(),
+  code: z.string().min(2).max(20),
+  active: z.boolean().default(true),
 });
 
-export const lotActivitySchema = insertLotActivitySchema.extend({
-  activityType: z.enum(['harvest', 'package', 'cool', 'ship', 'deliver'], {
-    errorMap: () => ({ message: "Type d'activité invalide" }),
-  }),
+export const insertFarmSchema = farmSchema.omit({ id: true, createdAt: true, updatedAt: true });
+export type Farm = z.infer<typeof farmSchema>;
+
+// Lot related schemas
+export const lotStatusSchema = z.enum([
+  "harvested",
+  "packaged",
+  "cooled",
+  "shipped",
+  "delivered"
+]);
+export type LotStatus = z.infer<typeof lotStatusSchema>;
+
+export const lotSchema = z.object({
+  ...baseSchema,
+  lotNumber: z.string().min(1).max(50),
+  farmId: z.number(),
+  harvestDate: z.string().datetime(),
+  initialQuantity: z.number().positive(),
+  currentStatus: lotStatusSchema,
+  notes: z.string().max(1000).optional(),
 });
 
-export type LoginData = z.infer<typeof loginSchema>;
-export type RegisterData = z.infer<typeof registerSchema>;
+export const insertLotSchema = lotSchema.omit({ id: true, createdAt: true, updatedAt: true });
+export type Lot = z.infer<typeof lotSchema>;
+
+// Lot Activity related schemas
+export const activityTypeSchema = z.enum([
+  "harvest",
+  "package",
+  "cool",
+  "ship",
+  "deliver"
+]);
+export type ActivityType = z.infer<typeof activityTypeSchema>;
+
+export const lotActivitySchema = z.object({
+  ...baseSchema,
+  lotId: z.number(),
+  activityType: activityTypeSchema,
+  datePerformed: z.string().datetime(),
+  quantity: z.number().positive(),
+  operatorName: z.string().min(2).max(100),
+  notes: z.string().max(1000).optional(),
+  attachments: z.array(z.string()).default([]),
+});
+
+export const insertLotActivitySchema = lotActivitySchema.omit({ id: true, createdAt: true, updatedAt: true });
+export type LotActivity = z.infer<typeof lotActivitySchema>;
+
+// API Response types
+export interface ApiResponse<T> {
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+// Stats types
+export interface StatsData {
+  totalLots: number;
+  activeFarms: number;
+  inTransit: number;
+  deliveredToday: number;
+}
+
+// Filter types
+export interface FilterState {
+  search: string;
+  farmId: string;
+  status: string;
+  date: string;
+}
+
+// Avocado Tracking Schemas
+export const avocadoVarietySchema = z.enum([
+  "hass",
+  "fuerte",
+  "bacon",
+  "zutano",
+  "other"
+]);
+export type AvocadoVariety = z.infer<typeof avocadoVarietySchema>;
+
+export const qualityGradeSchema = z.enum(["A", "B", "C"]);
+export type QualityGrade = z.infer<typeof qualityGradeSchema>;
+
+// Harvest Form Schema
+export const harvestFormSchema = z.object({
+  harvestDate: z.string().datetime(),
+  farmLocation: z.string().min(1),
+  farmerId: z.string().min(1),
+  lotNumber: z.string().min(1),
+  variety: avocadoVarietySchema,
+});
+
+// Transport Form Schema
+export const transportFormSchema = z.object({
+  lotNumber: z.string().min(1),
+  transportCompany: z.string().min(1),
+  driverName: z.string().min(1),
+  vehicleId: z.string().min(1),
+  departureDateTime: z.string().datetime(),
+  arrivalDateTime: z.string().datetime(),
+  temperature: z.number().optional(),
+});
+
+// Sorting Form Schema
+export const sortingFormSchema = z.object({
+  lotNumber: z.string().min(1),
+  sortingDate: z.string().datetime(),
+  staffInvolved: z.array(z.string()).optional(),
+  qualityGrade: qualityGradeSchema,
+  rejectedCount: z.number().min(0),
+  notes: z.string().optional(),
+});
+
+// Packaging Form Schema
+export const packagingFormSchema = z.object({
+  lotNumber: z.string().min(1),
+  packagingDate: z.string().datetime(),
+  boxId: z.string().min(1),
+  workerIds: z.array(z.string()),
+  netWeight: z.number().positive(),
+  avocadoCount: z.number().positive(),
+});
+
+// Storage Form Schema
+export const storageFormSchema = z.object({
+  boxId: z.string().min(1),
+  entryDate: z.string().datetime(),
+  storageTemperature: z.number(),
+  storageRoomId: z.string().min(1),
+  exitDate: z.string().datetime(),
+});
+
+// Export Form Schema
+export const exportFormSchema = z.object({
+  boxId: z.string().min(1),
+  loadingDate: z.string().datetime(),
+  containerId: z.string().min(1),
+  driverName: z.string().min(1),
+  vehicleId: z.string().min(1),
+  destination: z.string().min(1),
+});
+
+// Delivery Form Schema
+export const deliveryFormSchema = z.object({
+  boxId: z.string().min(1),
+  estimatedDeliveryDate: z.string().datetime(),
+  actualDeliveryDate: z.string().datetime(),
+  clientName: z.string().min(1),
+  received: z.boolean(),
+  receivedBy: z.string().optional(),
+});
+
+// Combined Avocado Tracking Schema
+export const avocadoTrackingSchema = z.object({
+  harvest: harvestFormSchema,
+  transport: transportFormSchema,
+  sorting: sortingFormSchema,
+  packaging: packagingFormSchema,
+  storage: storageFormSchema,
+  export: exportFormSchema,
+  delivery: deliveryFormSchema,
+});
+
+export type AvocadoTracking = z.infer<typeof avocadoTrackingSchema>;

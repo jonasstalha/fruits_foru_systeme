@@ -71,7 +71,7 @@ export default function LotDetailPage() {
   
   // Go back to previous page
   const handleGoBack = () => {
-    navigate(-1);
+    navigate("/");
   };
   
   // Handle print barcode label
@@ -183,8 +183,8 @@ export default function LotDetailPage() {
                     </div>
                   ) : barcodeData ? (
                     <BarcodeDisplay 
-                      barcodeData={barcodeData} 
-                      lot={lot!} 
+                      barcodeData={barcodeData}
+                      lot={lot!}
                       farmName={farm?.name || ''}
                     />
                   ) : (

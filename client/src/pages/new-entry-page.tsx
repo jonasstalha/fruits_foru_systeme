@@ -1,462 +1,291 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Loader2, Upload } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import Sidebar from "@/components/layout/sidebar";
-import TopBar from "@/components/layout/top-bar";
-import { Farm } from "@shared/schema";
-
-// Form schema for new entry
-const newEntrySchema = z.object({
-  farmId: z.string().min(1, "Veuillez sélectionner une ferme"),
-  activityType: z.enum(["harvest", "package", "cool", "ship", "deliver"], {
-    required_error: "Veuillez sélectionner un type d'activité",
-  }),
-  datePerformed: z.string().min(1, "Veuillez sélectionner une date"),
-  quantity: z.string().min(1, "Veuillez entrer une quantité"),
-  operatorName: z.string().min(2, "Veuillez entrer un nom d'opérateur"),
-  notes: z.string().optional(),
-  // For harvest activity (new lot creation)
-  // These fields are only required for harvest activity
-  lotNumber: z.string().optional(),
-  harvestDate: z.string().optional(),
-});
-
-type NewEntryFormValues = z.infer<typeof newEntrySchema>;
+import { api } from "@/lib/queryClient";
+import { AvocadoTracking, AvocadoVariety, QualityGrade } from "@shared/schema";
 
 export default function NewEntryPage() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  
-  // Fetch farms for dropdown
-  const { data: farms, isLoading: farmsLoading } = useQuery<Farm[]>({
-    queryKey: ["/api/farms"],
-  });
-  
-  // Form initialization
-  const form = useForm<NewEntryFormValues>({
-    resolver: zodResolver(newEntrySchema),
-    defaultValues: {
-      farmId: "",
-      activityType: "harvest",
-      datePerformed: new Date().toISOString().split('T')[0],
-      quantity: "",
-      operatorName: "",
-      notes: "",
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState<Partial<AvocadoTracking>>({
+    harvest: {
+      harvestDate: "",
+      farmLocation: "",
+      farmerId: "",
       lotNumber: "",
-      harvestDate: new Date().toISOString().split('T')[0],
+      variety: "hass",
+    },
+    transport: {
+      lotNumber: "",
+      transportCompany: "",
+      driverName: "",
+      vehicleId: "",
+      departureDateTime: "",
+      arrivalDateTime: "",
+    },
+    sorting: {
+      lotNumber: "",
+      sortingDate: "",
+      qualityGrade: "A",
+      rejectedCount: 0,
+    },
+    packaging: {
+      lotNumber: "",
+      packagingDate: "",
+      boxId: "",
+      workerIds: [],
+      netWeight: 0,
+      avocadoCount: 0,
+    },
+    storage: {
+      boxId: "",
+      entryDate: "",
+      storageTemperature: 0,
+      storageRoomId: "",
+      exitDate: "",
+    },
+    export: {
+      boxId: "",
+      loadingDate: "",
+      containerId: "",
+      driverName: "",
+      vehicleId: "",
+      destination: "",
+    },
+    delivery: {
+      boxId: "",
+      estimatedDeliveryDate: "",
+      actualDeliveryDate: "",
+      clientName: "",
+      received: false,
     },
   });
   
-  // Watch activity type to conditionally render fields
-  const activityType = form.watch("activityType");
-  const isHarvest = activityType === "harvest";
-  
-  // Query to get lots for the lot selection dropdown
-  const { data: existingLots, isLoading: lotsLoading } = useQuery<any[]>({
-    queryKey: ["/api/lots"],
-    enabled: activityType !== "harvest", // Only fetch lots when not in harvest mode
-  });
-  
-  // Fetch lot number for non-harvest activities
-  const [lotId, setLotId] = useState<string>("");
-  
-  // Mutations
-  const createLotMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/lots", data);
-      return await res.json();
-    },
-    onSuccess: (data) => {
-      // If we created a new lot, also create the activity
-      createActivityMutation.mutate({
-        lotId: data.id,
-        activityType: "harvest",
-        datePerformed: data.harvestDate,
-        quantity: parseInt(form.getValues("quantity")),
-        operatorName: form.getValues("operatorName"),
-        notes: form.getValues("notes"),
-        attachments: [],
-      });
-    },
-    onError: (error: Error) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post<AvocadoTracking>("/api/avocado-tracking", formData);
       toast({
-        title: "Erreur lors de la création du lot",
-        description: error.message,
+        title: "Succès",
+        description: "Le suivi des avocats a été enregistré avec succès",
+      });
+      setLocation("/dashboard");
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Une erreur est survenue lors de l'enregistrement",
         variant: "destructive",
       });
-    },
-  });
-  
-  const createActivityMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", `/api/lots/${data.lotId}/activities`, data);
-      return await res.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Activité enregistrée",
-        description: "L'activité a été enregistrée avec succès",
-      });
-      
-      // Invalidate queries and redirect
-      queryClient.invalidateQueries({ queryKey: ["/api/lots"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      setLocation("/");
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Erreur lors de l'enregistrement de l'activité",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-  
-  // Handle form submission
-  const onSubmit = (values: NewEntryFormValues) => {
-    if (isHarvest) {
-      // Create a new lot
-      const lotData = {
-        farmId: parseInt(values.farmId),
-        harvestDate: values.datePerformed,
-        initialQuantity: parseInt(values.quantity),
-        currentStatus: "harvested",
-      };
-      
-      createLotMutation.mutate(lotData);
-    } else {
-      // Add activity to existing lot
-      if (!lotId) {
-        toast({
-          title: "Veuillez sélectionner un lot",
-          description: "Un lot est requis pour cette activité",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      const activityData = {
-        lotId: parseInt(lotId),
-        activityType: values.activityType,
-        datePerformed: values.datePerformed,
-        quantity: parseInt(values.quantity),
-        operatorName: values.operatorName,
-        notes: values.notes,
-        attachments: [],
-      };
-      
-      createActivityMutation.mutate(activityData);
     }
   };
-  
-  // Handle file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const fileArray = Array.from(e.target.files);
-      setSelectedFiles(fileArray);
-    }
+
+  const handleChange = (section: keyof AvocadoTracking, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value,
+      },
+    }));
   };
-  
+
+  const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, 7));
+  const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 1:
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
-      <div className="hidden md:block">
-        <Sidebar />
-      </div>
-      
-      <main className="flex-grow">
-        <TopBar title="Nouvelle Entrée" subtitle="Enregistrer une nouvelle activité" />
-        
-        <div className="p-4 md:p-6">
-          <Card className="max-w-3xl mx-auto">
+          <Card>
             <CardHeader>
-              <CardTitle>Détails de l'Activité</CardTitle>
+              <CardTitle>📝 Récolte (Ferme)</CardTitle>
             </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                  {/* Basic Information */}
-                  <div className="bg-neutral-50 p-4 rounded">
-                    <h3 className="font-medium mb-4">Information de Base</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="farmId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Ferme <span className="text-red-500">*</span></FormLabel>
-                            <Select
-                              value={field.value}
-                              onValueChange={field.onChange}
-                              disabled={farmsLoading}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Sélectionnez une ferme" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {farms?.map((farm) => (
-                                  <SelectItem key={farm.id} value={farm.id.toString()}>
-                                    {farm.name} ({farm.code})
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      {isHarvest ? (
-                        <div>
-                          <FormLabel>Numéro de Lot</FormLabel>
-                          <div className="flex">
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="harvestDate">Date de récolte</Label>
+                <Input
+                  id="harvestDate"
+                  type="datetime-local"
+                  value={formData.harvest?.harvestDate}
+                  onChange={(e) => handleChange("harvest", "harvestDate", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="farmLocation">Localisation de la ferme</Label>
                             <Input
-                              value="AV-YYMMDD-"
-                              readOnly
-                              className="w-1/2 bg-neutral-100"
-                            />
+                  id="farmLocation"
+                  value={formData.harvest?.farmLocation}
+                  onChange={(e) => handleChange("harvest", "farmLocation", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="farmerId">ID Agriculteur</Label>
                             <Input
-                              value="XXX"
-                              readOnly
-                              className="w-1/2 bg-neutral-100"
-                              placeholder="Numéro auto-généré"
+                  id="farmerId"
+                  value={formData.harvest?.farmerId}
+                  onChange={(e) => handleChange("harvest", "farmerId", e.target.value)}
+                  required
                             />
                           </div>
-                          <p className="text-xs text-neutral-500 mt-1">Auto-généré en fonction de la date</p>
+              <div className="space-y-2">
+                <Label htmlFor="lotNumber">Numéro de lot</Label>
+                <Input
+                  id="lotNumber"
+                  value={formData.harvest?.lotNumber}
+                  onChange={(e) => handleChange("harvest", "lotNumber", e.target.value)}
+                  required
+                />
                         </div>
-                      ) : (
-                        <div>
-                          <FormLabel>Sélectionner un Lot <span className="text-red-500">*</span></FormLabel>
+              <div className="space-y-2">
+                <Label htmlFor="variety">Variété d'avocat</Label>
                           <Select 
-                            value={lotId} 
-                            onValueChange={(value) => {
-                              setLotId(value);
-                              // Find the lot from the existingLots array
-                              const selectedLot = existingLots?.find(lot => lot.id.toString() === value);
-                              if (selectedLot) {
-                                form.setValue('lotNumber', selectedLot.lotNumber);
-                              }
-                            }}
-                            disabled={lotsLoading}
+                  value={formData.harvest?.variety}
+                  onValueChange={(value) => handleChange("harvest", "variety", value)}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder="Sélectionner un lot" />
+                    <SelectValue placeholder="Sélectionner une variété" />
                             </SelectTrigger>
                             <SelectContent>
-                              {existingLots?.map((lot) => (
-                                <SelectItem key={lot.id} value={lot.id.toString()}>
-                                  {lot.lotNumber} - {new Date(lot.harvestDate).toLocaleDateString()}
-                                </SelectItem>
-                              ))}
+                    <SelectItem value="hass">Hass</SelectItem>
+                    <SelectItem value="fuerte">Fuerte</SelectItem>
+                    <SelectItem value="bacon">Bacon</SelectItem>
+                    <SelectItem value="zutano">Zutano</SelectItem>
+                    <SelectItem value="other">Autre</SelectItem>
                             </SelectContent>
                           </Select>
-                          {lotId && (
-                            <div className="mt-2">
-                              <span className="text-xs text-neutral-500">
-                                Numéro de lot: {form.getValues('lotNumber')}
-                              </span>
                             </div>
-                          )}
+            </CardContent>
+          </Card>
+        );
+
+      case 2:
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>🚛 Transport vers l'usine</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="transportCompany">Société de transport</Label>
+                <Input
+                  id="transportCompany"
+                  value={formData.transport?.transportCompany}
+                  onChange={(e) => handleChange("transport", "transportCompany", e.target.value)}
+                  required
+                />
                         </div>
-                      )}
+              <div className="space-y-2">
+                <Label htmlFor="driverName">Nom du chauffeur</Label>
+                <Input
+                  id="driverName"
+                  value={formData.transport?.driverName}
+                  onChange={(e) => handleChange("transport", "driverName", e.target.value)}
+                  required
+                />
+                    </div>
+              <div className="space-y-2">
+                <Label htmlFor="vehicleId">ID du véhicule</Label>
+                <Input
+                  id="vehicleId"
+                  value={formData.transport?.vehicleId}
+                  onChange={(e) => handleChange("transport", "vehicleId", e.target.value)}
+                  required
+                />
+                  </div>
+              <div className="space-y-2">
+                <Label htmlFor="departureDateTime">Date et heure de départ</Label>
+                <Input
+                  id="departureDateTime"
+                  type="datetime-local"
+                  value={formData.transport?.departureDateTime}
+                  onChange={(e) => handleChange("transport", "departureDateTime", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="arrivalDateTime">Date et heure d'arrivée</Label>
+                <Input
+                  id="arrivalDateTime"
+                  type="datetime-local"
+                  value={formData.transport?.arrivalDateTime}
+                  onChange={(e) => handleChange("transport", "arrivalDateTime", e.target.value)}
+                  required
+                      />
+                    </div>
+              <div className="space-y-2">
+                <Label htmlFor="temperature">Température (°C)</Label>
+                <Input
+                  id="temperature"
+                  type="number"
+                  value={formData.transport?.temperature}
+                  onChange={(e) => handleChange("transport", "temperature", parseFloat(e.target.value))}
+                      />
+                    </div>
+            </CardContent>
+          </Card>
+        );
+
+      // Add similar cases for steps 3-7 with their respective forms
+      // ... (I'll continue with the remaining steps if you'd like)
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-4">
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold mb-2">Nouvelle entrée de suivi d'avocats</h2>
+        <div className="flex items-center space-x-2">
+          {[1, 2, 3, 4, 5, 6, 7].map((step) => (
+            <div
+              key={step}
+              className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                step === currentStep
+                  ? "bg-primary text-primary-foreground"
+                  : step < currentStep
+                  ? "bg-primary/20"
+                  : "bg-muted"
+              }`}
+            >
+              {step}
+            </div>
+          ))}
                     </div>
                   </div>
                   
-                  {/* Activity Details */}
-                  <div>
-                    <h3 className="font-medium mb-4">Détails de l'Activité</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <FormField
-                        control={form.control}
-                        name="activityType"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Type d'Activité <span className="text-red-500">*</span></FormLabel>
-                            <Select
-                              value={field.value}
-                              onValueChange={field.onChange}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Sélectionnez une activité" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="harvest">Récolte</SelectItem>
-                                <SelectItem value="package">Emballage</SelectItem>
-                                <SelectItem value="cool">Refroidissement</SelectItem>
-                                <SelectItem value="ship">Expédition</SelectItem>
-                                <SelectItem value="deliver">Livraison</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="datePerformed"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Date <span className="text-red-500">*</span></FormLabel>
-                            <FormControl>
-                              <Input type="date" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="quantity"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Quantité (kg) <span className="text-red-500">*</span></FormLabel>
-                            <FormControl>
-                              <Input type="number" placeholder="Entrez la quantité" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="operatorName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Opérateur <span className="text-red-500">*</span></FormLabel>
-                            <FormControl>
-                              <Input placeholder="Nom de l'opérateur" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Additional Information */}
-                  <div>
-                    <h3 className="font-medium mb-4">Informations Additionnelles</h3>
-                    <FormField
-                      control={form.control}
-                      name="notes"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Notes</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              placeholder="Informations supplémentaires..."
-                              rows={3}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <div className="mt-4">
-                      <FormLabel>Joindre des documents</FormLabel>
-                      <div className="border-2 border-dashed border-neutral-300 rounded p-4 text-center">
-                        <Upload className="h-8 w-8 mx-auto text-neutral-400" />
-                        <p className="mt-2 text-sm text-neutral-500">Glissez-déposez des fichiers ici ou</p>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="mt-2"
-                          onClick={() => document.getElementById('file-upload')?.click()}
-                        >
-                          Parcourir les fichiers
-                        </Button>
-                        <input
-                          id="file-upload"
-                          type="file"
-                          multiple
-                          className="hidden"
-                          onChange={handleFileChange}
-                        />
-                        <p className="mt-1 text-xs text-neutral-400">PDF, JPG, PNG (max 5MB)</p>
-                        
-                        {selectedFiles.length > 0 && (
-                          <div className="mt-4 text-left">
-                            <p className="text-sm font-medium">Fichiers sélectionnés:</p>
-                            <ul className="text-sm text-neutral-600">
-                              {selectedFiles.map((file, index) => (
-                                <li key={index} className="mt-1">
-                                  {file.name} ({Math.round(file.size / 1024)} KB)
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Submit Buttons */}
-                  <div className="flex justify-end space-x-3 pt-4 border-t">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {renderStep()}
+
+        <div className="flex justify-between">
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setLocation("/")}
-                    >
-                      Annuler
+            onClick={prevStep}
+            disabled={currentStep === 1}
+          >
+            Précédent
+          </Button>
+          {currentStep < 7 ? (
+            <Button type="button" onClick={nextStep}>
+              Suivant
                     </Button>
-                    <Button
-                      type="submit"
-                      disabled={createLotMutation.isPending || createActivityMutation.isPending}
-                    >
-                      {(createLotMutation.isPending || createActivityMutation.isPending) ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Enregistrement...
-                        </>
-                      ) : (
-                        "Enregistrer"
-                      )}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
+          ) : (
+            <Button type="submit">Enregistrer</Button>
+          )}
         </div>
-      </main>
+      </form>
     </div>
   );
 }

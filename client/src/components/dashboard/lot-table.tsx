@@ -1,11 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
   CardFooter,
 } from "@/components/ui/card";
 import {
@@ -84,16 +81,6 @@ export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
   
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between px-6 py-4">
-        <CardTitle className="text-xl">Lots Récents</CardTitle>
-        <Link href="/lots">
-          <Button variant="link" className="text-primary flex items-center">
-            Voir tout
-            <ChevronRight className="ml-1 h-4 w-4" />
-          </Button>
-        </Link>
-      </CardHeader>
-      
       <CardContent className="p-0 overflow-x-auto">
         <Table>
           <TableHeader>
@@ -148,16 +135,6 @@ export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
                       <Link href={`/lots/${lot.id}`}>
                         <Eye className="h-4 w-4" />
                       </Link>
-                    </Button>
-                    
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-primary hover:text-primary-700"
-                      title="Générer PDF"
-                      onClick={() => window.open(`/api/lots/${lot.id}/pdf`, '_blank')}
-                    >
-                      <FileText className="h-4 w-4" />
                     </Button>
                     
                     <Button

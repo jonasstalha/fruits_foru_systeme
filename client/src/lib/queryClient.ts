@@ -1,73 +1,69 @@
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 
-async function throwIfResNotOk(res: Response) {
-  if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
-  }
-}
-
-export async function apiRequest(
-  method: string,
-  url: string,
-  data?: unknown | undefined,
-): Promise<Response> {
-  // Use relative URLs to avoid CORS issues
-  console.log(`Making API request: ${method} ${url}`);
-  
-  const res = await fetch(url, {
-    method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-  });
-
-  await throwIfResNotOk(res);
-  return res;
-}
-
-type UnauthorizedBehavior = "returnNull" | "throw";
-export const getQueryFn: <T>(options: {
-  on401: UnauthorizedBehavior;
-}) => QueryFunction<T> =
-  ({ on401: unauthorizedBehavior }) =>
-  async ({ queryKey }) => {
-    // Get the URL from the queryKey
-    let url = queryKey[0] as string;
-    
-    // Remove any http://localhost:5000 prefix if it's there (log message might be showing it)
-    if (url.startsWith('http://localhost:5000')) {
-      url = url.substring('http://localhost:5000'.length);
-    }
-    
-    console.log(`Making query API request: GET ${url}`);
-    
-    const res = await fetch(url, {
-      credentials: "include",
-    });
-
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      console.log(`Auth request returned 401, returning null as configured`);
-      return null;
-    }
-
-    await throwIfResNotOk(res);
-    const data = await res.json();
-    console.log(`API response data:`, data);
-    return data;
-  };
-
+// Create a query client with default options
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: getQueryFn({ on401: "throw" }),
-      refetchInterval: false,
+      staleTime: Infinity, // Never consider data stale
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
-    },
-    mutations: {
-      retry: false,
+      refetchOnMount: false,
+      refetchOnReconnect: false,
+      retry: 1,
+      retryDelay: 1000,
     },
   },
 });
+
+// Helper function to create query functions
+export function getQueryFn<T>(endpoint: string) {
+  return async () => {
+    const response = await api.get<T>(endpoint);
+    if (!response.data) {
+      throw new Error("No data received from endpoint");
+    }
+    return response.data;
+  };
+}
+
+// API request function with proper typing and error handling
+export async function apiRequest<T>(
+  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
+  endpoint: string,
+  data?: any
+): Promise<ApiResponse<T>> {
+  try {
+    const response = await fetch(endpoint, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: data ? JSON.stringify(data) : undefined,
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(responseData.message || "Une erreur est survenue");
+    }
+
+    // Ensure the response has the expected structure
+    if (!responseData || typeof responseData !== 'object') {
+      throw new Error("Invalid response format");
+    }
+
+    return responseData;
+  } catch (error) {
+    console.error(`API Error (${method} ${endpoint}):`, error);
+    throw error;
+  }
+}
+
+// Helper functions for common API operations
+export const api = {
+  get: <T>(endpoint: string) => apiRequest<T>("GET", endpoint),
+  post: <T>(endpoint: string, data: any) => apiRequest<T>("POST", endpoint, data),
+  put: <T>(endpoint: string, data: any) => apiRequest<T>("PUT", endpoint, data),
+  delete: <T>(endpoint: string) => apiRequest<T>("DELETE", endpoint),
+  patch: <T>(endpoint: string, data: any) => apiRequest<T>("PATCH", endpoint, data),
+};

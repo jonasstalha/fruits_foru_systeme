@@ -27,128 +27,147 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, MapPin, Edit2, Trash2 } from "lucide-react";
-import { farmSchema, Farm as FarmType } from "@shared/schema";
+import { Plus, Warehouse, Edit2, Trash2 } from "lucide-react";
 
-// Static data for farms
-const STATIC_FARMS: FarmType[] = [
+// Define warehouse schema
+const warehouseSchema = z.object({
+  name: z.string().min(1, "Le nom est requis"),
+  location: z.string().min(1, "La localisation est requise"),
+  capacity: z.string().min(1, "La capacité est requise"),
+  description: z.string().optional(),
+});
+
+type Warehouse = z.infer<typeof warehouseSchema> & {
+  id: number;
+  code: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Static data for warehouses
+const STATIC_WAREHOUSES: Warehouse[] = [
   {
     id: 1,
-    name: "Ferme Atlas",
-    code: "FA-001",
-    location: "Marrakech",
+    name: "Entrepôt Central",
+    code: "WH-001",
+    location: "Casablanca",
+    capacity: "1000 tonnes",
+    description: "Entrepôt principal pour le stockage des fruits",
     active: true,
-    description: "Ferme spécialisée dans les avocats",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   },
   {
     id: 2,
-    name: "Ferme Sahara",
-    code: "FS-002",
-    location: "Agadir",
+    name: "Entrepôt Nord",
+    code: "WH-002",
+    location: "Tanger",
+    capacity: "500 tonnes",
+    description: "Entrepôt pour la région nord",
     active: true,
-    description: "Ferme spécialisée dans les oranges",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
 ];
 
-const FarmsPage = () => {
+const WarehousesPage = () => {
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [openEditDialog, setOpenEditDialog] = useState(false);
-  const [selectedFarm, setSelectedFarm] = useState<FarmType | null>(null);
-  const [farms, setFarms] = useState<FarmType[]>(STATIC_FARMS);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>(STATIC_WAREHOUSES);
   
-  // Add farm form
-  const addFarmForm = useForm<z.infer<typeof farmSchema>>({
-    resolver: zodResolver(farmSchema),
+  // Add warehouse form
+  const addWarehouseForm = useForm<z.infer<typeof warehouseSchema>>({
+    resolver: zodResolver(warehouseSchema),
     defaultValues: {
       name: "",
       location: "",
+      capacity: "",
       description: "",
     },
   });
 
-  // Edit farm form
-  const editFarmForm = useForm<z.infer<typeof farmSchema>>({
-    resolver: zodResolver(farmSchema),
+  // Edit warehouse form
+  const editWarehouseForm = useForm<z.infer<typeof warehouseSchema>>({
+    resolver: zodResolver(warehouseSchema),
     defaultValues: {
       name: "",
       location: "",
+      capacity: "",
       description: "",
     },
   });
 
-  const onAddFarmSubmit = (values: z.infer<typeof farmSchema>) => {
-    const newFarm: FarmType = {
+  const onAddWarehouseSubmit = (values: z.infer<typeof warehouseSchema>) => {
+    const newWarehouse: Warehouse = {
       ...values,
-      id: farms.length + 1,
-      code: `FA-${String(farms.length + 1).padStart(3, '0')}`,
+      id: warehouses.length + 1,
+      code: `WH-${String(warehouses.length + 1).padStart(3, '0')}`,
       active: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
     
-    setFarms(prevFarms => [...prevFarms, newFarm]);
-    addFarmForm.reset();
+    setWarehouses(prevWarehouses => [...prevWarehouses, newWarehouse]);
+    addWarehouseForm.reset();
     setOpenAddDialog(false);
   };
 
-  const handleEditFarm = (farm: FarmType) => {
-    setSelectedFarm(farm);
-    editFarmForm.reset({
-      name: farm.name,
-      location: farm.location,
-      description: farm.description,
+  const handleEditWarehouse = (warehouse: Warehouse) => {
+    setSelectedWarehouse(warehouse);
+    editWarehouseForm.reset({
+      name: warehouse.name,
+      location: warehouse.location,
+      capacity: warehouse.capacity,
+      description: warehouse.description,
     });
     setOpenEditDialog(true);
   };
 
-  const onEditFarmSubmit = (values: z.infer<typeof farmSchema>) => {
-    if (!selectedFarm) return;
+  const onEditWarehouseSubmit = (values: z.infer<typeof warehouseSchema>) => {
+    if (!selectedWarehouse) return;
     
-    const updatedFarm: FarmType = {
-      ...selectedFarm,
+    const updatedWarehouse: Warehouse = {
+      ...selectedWarehouse,
       ...values,
       updatedAt: new Date().toISOString()
     };
     
-    setFarms(farms.map(farm => 
-      farm.id === selectedFarm.id ? updatedFarm : farm
+    setWarehouses(warehouses.map(warehouse => 
+      warehouse.id === selectedWarehouse.id ? updatedWarehouse : warehouse
     ));
     setOpenEditDialog(false);
-    setSelectedFarm(null);
+    setSelectedWarehouse(null);
   };
 
-  const handleDeleteFarm = (farmId: number) => {
-    setFarms(farms.filter(farm => farm.id !== farmId));
+  const handleDeleteWarehouse = (warehouseId: number) => {
+    setWarehouses(warehouses.filter(warehouse => warehouse.id !== warehouseId));
   };
 
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Gestion des Fermes</h2>
+        <h2 className="text-2xl font-bold">Gestion des Entrepôts</h2>
         <Dialog open={openAddDialog} onOpenChange={setOpenAddDialog}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              Ajouter une ferme
+              Ajouter un entrepôt
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Ajouter une ferme</DialogTitle>
+              <DialogTitle>Ajouter un entrepôt</DialogTitle>
             </DialogHeader>
-            <Form {...addFarmForm}>
-              <form onSubmit={addFarmForm.handleSubmit(onAddFarmSubmit)} className="space-y-4">
+            <Form {...addWarehouseForm}>
+              <form onSubmit={addWarehouseForm.handleSubmit(onAddWarehouseSubmit)} className="space-y-4">
                 <FormField
-                  control={addFarmForm.control}
+                  control={addWarehouseForm.control}
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nom de la ferme</FormLabel>
+                      <FormLabel>Nom de l'entrepôt</FormLabel>
                       <FormControl>
                         <Input {...field} />
                       </FormControl>
@@ -157,7 +176,7 @@ const FarmsPage = () => {
                   )}
                 />
                 <FormField
-                  control={addFarmForm.control}
+                  control={addWarehouseForm.control}
                   name="location"
                   render={({ field }) => (
                     <FormItem>
@@ -170,7 +189,20 @@ const FarmsPage = () => {
                   )}
                 />
                 <FormField
-                  control={addFarmForm.control}
+                  control={addWarehouseForm.control}
+                  name="capacity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Capacité</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={addWarehouseForm.control}
                   name="description"
                   render={({ field }) => (
                     <FormItem>
@@ -194,17 +226,17 @@ const FarmsPage = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {farms.map((farm) => (
-          <Card key={farm.id} className="hover:shadow-lg transition-shadow">
+        {warehouses.map((warehouse) => (
+          <Card key={warehouse.id} className="hover:shadow-lg transition-shadow">
             <CardHeader>
               <div className="flex justify-between items-start">
-                <CardTitle className="text-xl">{farm.name}</CardTitle>
+                <CardTitle className="text-xl">{warehouse.name}</CardTitle>
                 <div className="flex space-x-2">
                   <Button 
                     variant="ghost" 
                     size="icon" 
                     className="text-blue-500 hover:text-blue-700"
-                    onClick={() => handleEditFarm(farm)}
+                    onClick={() => handleEditWarehouse(warehouse)}
                   >
                     <Edit2 className="h-4 w-4" />
                   </Button>
@@ -212,33 +244,34 @@ const FarmsPage = () => {
                     variant="ghost" 
                     size="icon" 
                     className="text-red-500 hover:text-red-700"
-                    onClick={() => handleDeleteFarm(farm.id)}
+                    onClick={() => handleDeleteWarehouse(warehouse.id)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
               <div className="flex items-center text-sm text-neutral-500">
-                <MapPin className="h-4 w-4 mr-1" />
-                {farm.location}
+                <Warehouse className="h-4 w-4 mr-1" />
+                {warehouse.location}
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-neutral-600">{farm.description}</p>
+              <p className="text-neutral-600">{warehouse.description}</p>
               <div className="mt-4 flex items-center justify-between">
-                <span className="text-sm font-mono text-neutral-500">{farm.code}</span>
+                <span className="text-sm font-mono text-neutral-500">{warehouse.code}</span>
+                <span className="text-sm text-neutral-500">Capacité: {warehouse.capacity}</span>
                 <span className={`px-2 py-1 text-xs rounded-full ${
-                  farm.active 
+                  warehouse.active 
                     ? "bg-green-100 text-green-800" 
                     : "bg-red-100 text-red-800"
                 }`}>
-                  {farm.active ? "Active" : "Inactive"}
+                  {warehouse.active ? "Active" : "Inactive"}
                 </span>
               </div>
             </CardContent>
             <CardFooter className="flex justify-between text-sm text-neutral-500">
-              <span>Créé le {new Date(farm.createdAt || new Date()).toLocaleDateString()}</span>
-              <span>Modifié le {new Date(farm.updatedAt || new Date()).toLocaleDateString()}</span>
+              <span>Créé le {new Date(warehouse.createdAt || new Date()).toLocaleDateString()}</span>
+              <span>Modifié le {new Date(warehouse.updatedAt || new Date()).toLocaleDateString()}</span>
             </CardFooter>
           </Card>
         ))}
@@ -248,16 +281,16 @@ const FarmsPage = () => {
       <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Modifier la ferme</DialogTitle>
+            <DialogTitle>Modifier l'entrepôt</DialogTitle>
           </DialogHeader>
-          <Form {...editFarmForm}>
-            <form onSubmit={editFarmForm.handleSubmit(onEditFarmSubmit)} className="space-y-4">
+          <Form {...editWarehouseForm}>
+            <form onSubmit={editWarehouseForm.handleSubmit(onEditWarehouseSubmit)} className="space-y-4">
               <FormField
-                control={editFarmForm.control}
+                control={editWarehouseForm.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Nom de la ferme</FormLabel>
+                    <FormLabel>Nom de l'entrepôt</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -266,7 +299,7 @@ const FarmsPage = () => {
                 )}
               />
               <FormField
-                control={editFarmForm.control}
+                control={editWarehouseForm.control}
                 name="location"
                 render={({ field }) => (
                   <FormItem>
@@ -279,7 +312,20 @@ const FarmsPage = () => {
                 )}
               />
               <FormField
-                control={editFarmForm.control}
+                control={editWarehouseForm.control}
+                name="capacity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Capacité</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editWarehouseForm.control}
                 name="description"
                 render={({ field }) => (
                   <FormItem>
@@ -304,4 +350,4 @@ const FarmsPage = () => {
   );
 };
 
-export default FarmsPage;
+export default WarehousesPage; 

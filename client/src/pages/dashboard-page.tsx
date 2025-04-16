@@ -1,115 +1,139 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import TopBar from "@/components/layout/top-bar";
 import StatusCards from "@/components/dashboard/status-cards";
 import FilterBar from "@/components/dashboard/filter-bar";
 import LotTable from "@/components/dashboard/lot-table";
 import { Plus, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Lot, Farm } from "@shared/schema";
+import { StatsData, Farm, Lot, FilterState } from "@shared/schema";
 
-// Define StatsData interface
-interface StatsData {
-  totalLots: number;
-  activeFarms: number;
-  inTransit: number;
-  deliveredToday: number;
-}
+// Static data
+const STATIC_STATS: StatsData = {
+  totalLots: 10,
+  activeFarms: 3,
+  inTransit: 5,
+  deliveredToday: 2
+};
 
-interface FilterState {
-  search: string;
-  farmId: string;
-  status: string;
-  date: string;
-}
+const STATIC_FARMS: Farm[] = [
+  {
+    id: 1,
+    name: "Ferme Atlas",
+    code: "FA-001",
+    location: "Marrakech",
+    active: true,
+    description: "Ferme spécialisée dans les avocats",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 2,
+    name: "Ferme Sahara",
+    code: "FS-002",
+    location: "Agadir",
+    active: true,
+    description: "Ferme spécialisée dans les oranges",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
+
+const STATIC_LOTS: Lot[] = [
+  {
+    id: 1,
+    lotNumber: "LOT-001",
+    farmId: 1,
+    harvestDate: new Date().toISOString(),
+    initialQuantity: 1000,
+    currentStatus: "shipped",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    notes: "Lot d'avocats de première qualité"
+  },
+  {
+    id: 2,
+    lotNumber: "LOT-002",
+    farmId: 2,
+    harvestDate: new Date().toISOString(),
+    initialQuantity: 500,
+    currentStatus: "delivered",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    notes: "Lot d'oranges bio"
+  }
+];
+
+// Constants
+const DEFAULT_FILTERS: FilterState = {
+  search: "",
+  farmId: "all",
+  status: "all",
+  date: "",
+};
 
 export default function DashboardPage() {
-  // Create a fake admin user since we have removed authentication
-  const user = { id: 1, username: 'admin', role: 'admin', fullName: 'Admin User' };
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   
-  const [filters, setFilters] = useState<FilterState>({
-    search: "",
-    farmId: "all",
-    status: "all",
-    date: "",
-  });
-  
-  // Fetch stats
-  const { data: stats, isLoading: statsLoading } = useQuery<StatsData>({
-    queryKey: ["/api/stats"],
-  });
-  
-  // Fetch farms for filter dropdown
-  const { data: farms, isLoading: farmsLoading } = useQuery<Farm[]>({
-    queryKey: ["/api/farms"],
-  });
-  
-  // Construct query string from filters
-  const getQueryString = () => {
-    const params = new URLSearchParams();
-    
-    // Only add farmId if it's a valid id (not "all")
-    if (filters.farmId && filters.farmId !== "all") params.append("farmId", filters.farmId);
-    
-    // Only add status if it's a valid status (not "all")
-    if (filters.status && filters.status !== "all") params.append("status", filters.status);
-    
-    if (filters.date) params.append("date", filters.date);
-    
-    return params.toString();
-  };
-  
-  // Fetch lots with filters
-  const { data: lots, isLoading: lotsLoading } = useQuery<Lot[]>({
-    queryKey: [`/api/lots?${getQueryString()}`],
-  });
-  
+  // Handle filter changes
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
-    setFilters({ ...filters, ...newFilters });
+    setFilters(prev => ({ ...prev, ...newFilters }));
   };
   
-  const canCreateEntries = user?.role === 'admin' || user?.role === 'operator';
+  // Check if user can create entries (admin or operator)
+  const canCreateEntries = true; // TODO: Replace with actual user role check
   
   return (
-    <>
-      <TopBar title="Tableau de Bord" subtitle="Vue d'ensemble de la traçabilité" />
+    <div className="p-4 md:p-6 space-y-6">
+      {/* Status Cards Section */}
+      <section>
+        <StatusCards 
+          stats={STATIC_STATS} 
+          isLoading={false} 
+        />
+      </section>
       
-      <div className="p-4 md:p-6">
-        {/* Status Cards */}
-        <StatusCards stats={stats} isLoading={statsLoading} />
-        
-        {/* Filter Bar */}
+      {/* Filter Bar Section */}
+      <section>
         <FilterBar 
           filters={filters} 
           onFilterChange={handleFilterChange} 
-          farms={farms || []} 
-          isLoading={farmsLoading} 
+          farms={STATIC_FARMS} 
+          isLoading={false} 
         />
-        
-        {/* Lots Table */}
+      </section>
+      
+      {/* Lots Table Section */}
+      <section>
         <LotTable 
-          lots={lots || []} 
-          isLoading={lotsLoading} 
-          farms={farms || []} 
+          lots={STATIC_LOTS} 
+          isLoading={false} 
+          farms={STATIC_FARMS} 
         />
-        
-        {/* Action Buttons */}
-        {canCreateEntries && (
-          <div className="fixed bottom-6 right-6 flex flex-col space-y-3">
-            <Button asChild className="h-14 w-14 rounded-full shadow-lg">
-              <Link href="/scan">
-                <QrCode className="h-6 w-6" />
-              </Link>
-            </Button>
-            <Button asChild className="h-14 w-14 rounded-full shadow-lg">
-              <Link href="/new-entry">
-                <Plus className="h-6 w-6" />
-              </Link>
-            </Button>
-          </div>
-        )}
-      </div>
-    </>
+      </section>
+      
+      {/* Action Buttons */}
+      {canCreateEntries && (
+        <div className="fixed bottom-6 right-6 flex flex-col space-y-3">
+          <Button 
+            asChild 
+            className="h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary-600"
+            title="Scanner un code-barres"
+          >
+            <Link href="/scan">
+              <QrCode className="h-6 w-6" />
+            </Link>
+          </Button>
+          <Button 
+            asChild 
+            className="h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary-600"
+            title="Ajouter une nouvelle entrée"
+          >
+            <Link href="/new-entry">
+              <Plus className="h-6 w-6" />
+            </Link>
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }

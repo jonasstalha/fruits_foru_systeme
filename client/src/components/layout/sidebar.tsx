@@ -12,7 +12,7 @@ import {
   FileBarChart,
   BarChart3,
   Warehouse,
-  Map
+  
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -39,15 +39,12 @@ export default function Sidebar() {
       title: "Scanner Code",
       icon: <QrCode className="h-5 w-5 mr-2" />,
       path: "/scan",
-    }
+    },
+
   ];
   
   const traceabilityItems = [
-    {
-      title: "Gestion Lots",
-      icon: <PackageCheck className="h-5 w-5 mr-2" />,
-      path: "/lots",
-    },
+
     {
       title: "Rapports PDF",
       icon: <FileText className="h-5 w-5 mr-2" />,
@@ -62,11 +59,6 @@ export default function Sidebar() {
   
   const adminItems = [
     {
-      title: "Gérer Fermes",
-      icon: <Tractor className="h-5 w-5 mr-2" />,
-      path: "/farms",
-    },
-    {
       title: "Utilisateurs",
       icon: <Users className="h-5 w-5 mr-2" />,
       path: "/users",
@@ -77,10 +69,15 @@ export default function Sidebar() {
       path: "/warehouses",
     },
     {
-      title: "Cartographie",
-      icon: <Map className="h-5 w-5 mr-2" />,
-      path: "/map",
-    }
+      title: "Gestion Lots",
+      icon: <PackageCheck className="h-5 w-5 mr-2" />,
+      path: "/lots",
+    },
+    {
+      title: "Gérer Fermes",
+      icon: <Tractor className="h-5 w-5 mr-2" />,
+      path: "/farms",
+    },
   ];
   
   return (
@@ -157,7 +154,7 @@ export default function Sidebar() {
       {/* Bottom Section with Version and Info */}
       <div className="p-4 border-t border-neutral-700">
         <div className="text-center">
-          <div className="text-sm text-neutral-400">Version 1.0</div>
+          <div className="text-sm text-neutral-400">Version 0.1</div>
           <div className="text-xs text-neutral-500 mt-1">© 2025 Convo Bio Compliance</div>
         </div>
       </div>
