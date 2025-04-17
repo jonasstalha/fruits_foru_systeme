@@ -170,6 +170,7 @@ export const packagingFormSchema = z.object({
   workerIds: z.array(z.string()),
   netWeight: z.number().positive(),
   avocadoCount: z.number().positive(),
+  boxType: z.enum(["case", "carton"]).default("case"),
 });
 
 // Storage Form Schema

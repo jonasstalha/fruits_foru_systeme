@@ -58,6 +58,7 @@ export default function UsersPage() {
   // Fetch users
   const { data: users, isLoading } = useQuery<UserWithoutPassword[]>({
     queryKey: ["/api/admin/users"],
+    queryFn: () => apiRequest<UserWithoutPassword[]>('GET', '/api/admin/users'),
   });
   
   // Add user form

@@ -15,7 +15,8 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogTrigger,
-  DialogFooter 
+  DialogFooter,
+  DialogDescription
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -27,7 +28,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, MapPin, Edit2, Trash2 } from "lucide-react";
 import { farmSchema, Farm as FarmType } from "@shared/schema";
 
@@ -123,7 +123,7 @@ const FarmsPage = () => {
   };
 
   const handleDeleteFarm = (farmId: number) => {
-    setFarms(farms.filter(farm => farm.id !== farmId));
+    setFarms(farms.filter((farm: FarmType) => farm.id !== farmId));
   };
 
   return (
@@ -140,6 +140,9 @@ const FarmsPage = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Ajouter une ferme</DialogTitle>
+              <DialogDescription>
+                Remplissez les informations ci-dessous pour ajouter une nouvelle ferme.
+              </DialogDescription>
             </DialogHeader>
             <Form {...addFarmForm}>
               <form onSubmit={addFarmForm.handleSubmit(onAddFarmSubmit)} className="space-y-4">
@@ -249,6 +252,9 @@ const FarmsPage = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Modifier la ferme</DialogTitle>
+            <DialogDescription>
+              Modifiez les informations de la ferme ci-dessous.
+            </DialogDescription>
           </DialogHeader>
           <Form {...editFarmForm}>
             <form onSubmit={editFarmForm.handleSubmit(onEditFarmSubmit)} className="space-y-4">

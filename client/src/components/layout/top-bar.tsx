@@ -24,7 +24,7 @@ export default function TopBar({ title, subtitle }: TopBarProps) {
   
   return (
     <>
-      <header className="bg-white shadow-sm flex justify-between items-center p-4">
+      <header className="bg-white shadow-sm flex justify-between items-center p-5 ">
         <div>
           <h1 className="text-2xl font-bold text-neutral-800">{title}</h1>
           {subtitle && <p className="text-neutral-500">{subtitle}</p>}

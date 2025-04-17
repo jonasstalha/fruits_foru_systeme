@@ -3,26 +3,28 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, X, Printer, Download } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
 interface PDFViewerProps {
-  lotId: number;
+  lotId: string;
   onClose: () => void;
 }
 
 export default function PDFViewer({ lotId, onClose }: PDFViewerProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   
-  // Fetch PDF data (this will return a blob URL)
+  // Fetch PDF data using the mock API
   const { data: pdfUrl, isLoading, isError } = useQuery({
-    queryKey: [`/api/lots/${lotId}/pdf`],
+    queryKey: ['pdf', lotId],
     queryFn: async () => {
-      const response = await fetch(`/api/lots/${lotId}/pdf`);
-      if (!response.ok) {
-        throw new Error("Erreur lors de la génération du PDF");
+      // Check if lotId is valid
+      if (!lotId) {
+        throw new Error("Lot ID is required for PDF generation");
       }
-      const blob = await response.blob();
+      const blob = await apiRequest<Blob>('GET', `/pdf/${lotId}`);
       return URL.createObjectURL(blob);
     },
+    enabled: !!lotId, // Only run the query if lotId is truthy
   });
   
   // Handle print
