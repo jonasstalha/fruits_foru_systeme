@@ -1,17 +1,15 @@
 import { QueryClient } from "@tanstack/react-query";
-import { mockApi, mockAvocadoTrackingData } from "./mockData";
-import { AvocadoTracking, Farm } from "@shared/schema";
-
-const API_BASE_URL = 'http://localhost:3000';
+import { Farm, Lot, AvocadoTracking, StatsData } from "@shared/schema";
+import * as firebaseService from "./firebaseService";
 
 // Create a query client with default options
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: Infinity, // Never consider data stale
-      refetchOnWindowFocus: false,
-      refetchOnMount: false,
-      refetchOnReconnect: false,
+      staleTime: 0, // Consider data stale immediately to allow refetching
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
+      refetchOnReconnect: true,
       retry: 1,
       retryDelay: 1000,
     },
@@ -30,16 +28,19 @@ export async function apiRequest<T>(
   data?: any
 ): Promise<T> {
   try {
-    // Use mock API instead of real API calls
+    console.log(`API Request: ${method} ${endpoint}`, data ? `with data: ${JSON.stringify(data)}` : '');
+    
+    // Use Firebase service instead of mock API
     switch (method) {
       case "GET":
         if (endpoint === "/api/avocado-tracking") {
-          return await mockApi.getAvocadoTrackingData();
+          return await firebaseService.getAvocadoTrackingData();
         }
         if (endpoint.startsWith("/api/avocado-tracking/")) {
           const lotNumber = endpoint.split("/").pop();
           if (lotNumber) {
-            const entry = mockAvocadoTrackingData.find(
+            const entries = await firebaseService.getAvocadoTrackingData();
+            const entry = entries.find(
               (lot) => lot.harvest.lotNumber === lotNumber
             );
             if (!entry) {
@@ -49,48 +50,73 @@ export async function apiRequest<T>(
           }
         }
         if (endpoint === "/api/farms") {
-          return await mockApi.getFarms();
+          return await firebaseService.getFarms();
+        }
+        if (endpoint === "/api/lots") {
+          return await firebaseService.getLots();
+        }
+        if (endpoint === "/api/stats") {
+          return await firebaseService.getStats();
         }
         if (endpoint.startsWith("/pdf/")) {
-          const lotId = endpoint.split("/").pop();
-          if (lotId) {
-            return await mockApi.generatePDF(lotId);
-          }
+          // PDF generation is not implemented in Firebase yet
+          throw new Error("PDF generation is not implemented in Firebase yet");
         }
-        throw new Error(`Endpoint ${endpoint} not implemented in mock API`);
+        throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
       
       case "POST":
         if (endpoint === "/api/avocado-tracking") {
-          return await mockApi.addAvocadoTracking(data);
+          return await firebaseService.addAvocadoTracking(data);
         }
         if (endpoint === "/api/farms") {
-          return await mockApi.addFarm(data);
+          console.log("API Request: Adding farm with data:", data);
+          const result = await firebaseService.addFarm(data);
+          console.log("API Request: Farm added successfully:", result);
+          return result;
         }
-        throw new Error(`Endpoint ${endpoint} not implemented in mock API`);
+        if (endpoint === "/api/lots") {
+          return await firebaseService.addLot(data);
+        }
+        throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
       
       case "PUT":
         if (endpoint.startsWith("/api/farms/")) {
-          const id = parseInt(endpoint.split("/").pop() || "0");
-          if (isNaN(id)) {
+          const id = endpoint.split("/").pop();
+          if (!id) {
             throw new Error("Invalid farm ID");
           }
-          return await mockApi.updateFarm(id, data);
+          return await firebaseService.updateFarm(id, data);
         }
-        throw new Error(`Endpoint ${endpoint} not implemented in mock API`);
+        if (endpoint.startsWith("/api/lots/")) {
+          const id = endpoint.split("/").pop();
+          if (!id) {
+            throw new Error("Invalid lot ID");
+          }
+          return await firebaseService.updateLot(id, data);
+        }
+        throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
       
       case "DELETE":
         if (endpoint.startsWith("/api/farms/")) {
-          const id = parseInt(endpoint.split("/").pop() || "0");
-          if (isNaN(id)) {
+          const id = endpoint.split("/").pop();
+          if (!id) {
             throw new Error("Invalid farm ID");
           }
-          await mockApi.deleteFarm(id);
+          await firebaseService.deleteFarm(id);
           return null;
         }
-        throw new Error(`Endpoint ${endpoint} not implemented in mock API`);
+        if (endpoint.startsWith("/api/lots/")) {
+          const id = endpoint.split("/").pop();
+          if (!id) {
+            throw new Error("Invalid lot ID");
+          }
+          await firebaseService.deleteLot(id);
+          return null;
+        }
+        throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
       
       default:
-        throw new Error(`Method ${method} not implemented in mock API`);
+        throw new Error(`Method ${method} not implemented in Firebase service`);
     }
   } catch (error) {
     console.error(`API Error (${method} ${endpoint}):`, error);
@@ -121,10 +147,29 @@ export const getFarms = () => {
   });
 };
 
+export const getLots = () => {
+  return getQueryFn<Lot[]>({
+    queryKey: ['lots'],
+    queryFn: () => apiRequest<Lot[]>('GET', '/api/lots')
+  });
+};
+
+export const getStats = () => {
+  return getQueryFn<StatsData>({
+    queryKey: ['stats'],
+    queryFn: () => apiRequest<StatsData>('GET', '/api/stats')
+  });
+};
+
 export const addAvocadoTracking = (data: AvocadoTracking) => {
   return getQueryFn<AvocadoTracking>({
     queryKey: ['avocadoTracking', 'add'],
-    queryFn: () => apiRequest<AvocadoTracking>('POST', '/api/avocado-tracking', data)
+    queryFn: async () => {
+      const result = await apiRequest<AvocadoTracking>('POST', '/api/avocado-tracking', data);
+      // Invalidate the avocadoTracking query to trigger a refetch
+      queryClient.invalidateQueries({ queryKey: ['avocadoTracking'] });
+      return result;
+    }
   });
 };
 
@@ -135,10 +180,24 @@ export const addFarm = (data: Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>) => {
   });
 };
 
+export const addLot = (data: Omit<Lot, 'id' | 'createdAt' | 'updatedAt'>) => {
+  return getQueryFn<Lot>({
+    queryKey: ['lots', 'add'],
+    queryFn: () => apiRequest<Lot>('POST', '/api/lots', data)
+  });
+};
+
 export const updateFarm = (id: number, data: Partial<Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>>) => {
   return getQueryFn<Farm>({
     queryKey: ['farms', 'update', id],
     queryFn: () => apiRequest<Farm>('PUT', `/api/farms/${id}`, data)
+  });
+};
+
+export const updateLot = (id: number, data: Partial<Omit<Lot, 'id' | 'createdAt' | 'updatedAt'>>) => {
+  return getQueryFn<Lot>({
+    queryKey: ['lots', 'update', id],
+    queryFn: () => apiRequest<Lot>('PUT', `/api/lots/${id}`, data)
   });
 };
 
@@ -149,10 +208,16 @@ export const deleteFarm = (id: number) => {
   });
 };
 
-// Add PDF generation function
+export const deleteLot = (id: number) => {
+  return getQueryFn<void>({
+    queryKey: ['lots', 'delete', id],
+    queryFn: () => apiRequest<void>('DELETE', `/api/lots/${id}`)
+  });
+};
+
 export const generatePDF = (lotId: string | number) => {
-  return getQueryFn<Blob>({
+  return getQueryFn<string>({
     queryKey: ['pdf', lotId],
-    queryFn: () => apiRequest<Blob>('GET', `/pdf/${lotId}`)
+    queryFn: () => apiRequest<string>('GET', `/pdf/${lotId}`)
   });
 };

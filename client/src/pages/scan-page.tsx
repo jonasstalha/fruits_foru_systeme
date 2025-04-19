@@ -282,7 +282,9 @@ export default function ScanPage() {
                   </div>
                   <div>
                     <div className="text-sm font-medium text-muted-foreground">Statut</div>
-                    <div className="text-lg font-semibold capitalize">{scannedLot.delivery.received ? 'Livré' : 'En cours'}</div>
+                    <div className="text-lg font-semibold capitalize">
+                      {scannedLot.delivery.actualDeliveryDate ? 'Livré' : 'En cours'}
+                    </div>
                   </div>
                 </div>
               </div>

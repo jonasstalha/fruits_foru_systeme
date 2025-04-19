@@ -10,8 +10,29 @@ interface LotDetailsProps {
 
 export default function LotDetails({ lot, farm }: LotDetailsProps) {
   // Format dates
-  const harvestDate = format(new Date(lot.harvestDate), "dd/MM/yyyy", { locale: fr });
-  const createdAt = format(new Date(lot.createdAt), "dd/MM/yyyy HH:mm", { locale: fr });
+  const formatDate = (dateString: string, formatStr: string) => {
+    try {
+      // Check if the date string is valid
+      if (!dateString || dateString === "") {
+        return "N/A";
+      }
+      
+      const date = new Date(dateString);
+      
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        return "Date invalide";
+      }
+      
+      return format(date, formatStr, { locale: fr });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "Date invalide";
+    }
+  };
+
+  const harvestDate = formatDate(lot.harvestDate, "dd/MM/yyyy");
+  const createdAt = formatDate(lot.createdAt, "dd/MM/yyyy HH:mm");
   
   // Get status display
   const getStatusDisplay = (status: string) => {

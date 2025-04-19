@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { api } from "@/lib/queryClient";
+import { api, addAvocadoTracking } from "@/lib/queryClient";
 import { AvocadoTracking, AvocadoVariety, QualityGrade } from "@shared/schema";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
@@ -69,7 +69,8 @@ export default function NewEntryPage() {
       estimatedDeliveryDate: "",
       actualDeliveryDate: "",
       clientName: "",
-      received: false,
+      clientLocation: "",
+      notes: "",
     },
   });
   
@@ -109,11 +110,15 @@ export default function NewEntryPage() {
         }
       }
       
-      await api.post<AvocadoTracking>("/api/avocado-tracking", updatedFormData);
+      // Use the addAvocadoTracking function directly
+      await addAvocadoTracking(updatedFormData as AvocadoTracking)();
+      
       toast({
         title: "Succès",
         description: "Le suivi des avocats a été enregistré avec succès",
       });
+      
+      // Redirect to the lots page
       setLocation("/lots");
     } catch (error) {
       console.error("Error submitting form:", error);
@@ -505,15 +510,21 @@ export default function NewEntryPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="received">Statut de réception</Label>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="received"
-                    checked={formData.delivery?.received}
-                    onCheckedChange={(checked) => handleChange("delivery", "received", checked)}
-                  />
-                  <Label htmlFor="received">Reçu</Label>
-                </div>
+                <Label htmlFor="clientLocation">Localisation du client</Label>
+                <Input
+                  id="clientLocation"
+                  value={formData.delivery?.clientLocation}
+                  onChange={(e) => handleChange("delivery", "clientLocation", e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Textarea
+                  id="notes"
+                  value={formData.delivery?.notes}
+                  onChange={(e) => handleChange("delivery", "notes", e.target.value)}
+                />
               </div>
             </CardContent>
           </Card>

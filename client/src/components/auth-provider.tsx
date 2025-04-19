@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { toast } from "sonner";
 import { 
   User,
   signInWithEmailAndPassword,
@@ -6,18 +7,17 @@ import {
   onAuthStateChanged
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { toast } from "sonner";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -30,7 +30,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const login = async (email: string, password: string) => {
+    setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const userData = userCredential.user;
@@ -40,10 +41,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Login error:", error);
       toast.error("Erreur de connexion: Email ou mot de passe incorrect");
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
-  const signOut = async () => {
+  const logout = async () => {
     try {
       await firebaseSignOut(auth);
       toast.success("Déconnexion réussie");
@@ -55,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -63,8 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
-}
+} 

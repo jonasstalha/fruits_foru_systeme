@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth } from "@/components/auth-provider";
 import { Menu, Bell, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Sidebar from "./sidebar";

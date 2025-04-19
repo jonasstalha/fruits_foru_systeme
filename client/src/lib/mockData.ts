@@ -1,165 +1,242 @@
-import { AvocadoTracking, Farm } from "@shared/schema";
+import { AvocadoTracking, Farm, Lot, StatsData } from "@shared/schema";
 
 // Mock data for avocado tracking
 export let mockAvocadoTrackingData: AvocadoTracking[] = [
   {
+    id: "tracking1",
     harvest: {
       harvestDate: new Date().toISOString(),
-      farmLocation: "Ferme Atlas, Marrakech",
-      farmerId: "FARM-001",
-      lotNumber: "LOT-2024-001",
+      farmLocation: "Location 1",
+      farmerId: "farmer1",
+      lotNumber: "L1",
       variety: "hass"
     },
     transport: {
-      lotNumber: "LOT-2024-001",
-      transportCompany: "Transport Express",
-      driverName: "Mohammed Alami",
-      vehicleId: "VEH-001",
+      lotNumber: "L1",
+      transportCompany: "Company 1",
+      driverName: "Driver 1",
+      vehicleId: "vehicle1",
       departureDateTime: new Date().toISOString(),
       arrivalDateTime: new Date().toISOString(),
-      temperature: 4.5
+      temperature: 4
     },
     sorting: {
-      lotNumber: "LOT-2024-001",
+      lotNumber: "L1",
       sortingDate: new Date().toISOString(),
-      staffInvolved: ["STAFF-001", "STAFF-002"],
+      staffInvolved: ["staff1", "staff2"],
       qualityGrade: "A",
-      rejectedCount: 5,
-      notes: "Quality check completed successfully"
+      rejectedCount: 0,
+      notes: "Notes 1"
     },
     packaging: {
-      lotNumber: "LOT-2024-001",
+      lotNumber: "L1",
       packagingDate: new Date().toISOString(),
-      boxId: "BOX-001",
-      workerIds: ["WORK-001", "WORK-002"],
-      netWeight: 25.5,
-      avocadoCount: 120,
+      boxId: "box1",
+      workerIds: ["worker1", "worker2"],
+      netWeight: 10,
+      avocadoCount: 20,
       boxType: "case"
     },
     storage: {
-      boxId: "BOX-001",
+      boxId: "box1",
       entryDate: new Date().toISOString(),
-      storageTemperature: 3.5,
-      storageRoomId: "ROOM-001",
+      storageTemperature: 4,
+      storageRoomId: "room1",
       exitDate: new Date().toISOString()
     },
     export: {
-      boxId: "BOX-001",
+      boxId: "box1",
       loadingDate: new Date().toISOString(),
-      containerId: "CONT-001",
-      driverName: "Ahmed Benali",
-      vehicleId: "VEH-002",
-      destination: "Paris, France"
+      containerId: "container1",
+      driverName: "Driver 1",
+      vehicleId: "vehicle1",
+      destination: "Destination 1"
     },
     delivery: {
-      boxId: "BOX-001",
+      boxId: "box1",
       estimatedDeliveryDate: new Date().toISOString(),
       actualDeliveryDate: new Date().toISOString(),
-      clientName: "Fruits & Co",
-      received: true,
-      receivedBy: "Jean Dupont"
-    }
+      clientName: "Client 1",
+      clientLocation: "Location 1",
+      notes: "Notes 1"
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   {
+    id: "tracking2",
     harvest: {
       harvestDate: "2023-04-20T07:30:00",
-      farmLocation: "Ferme Sahara, Agadir",
-      farmerId: "FARM-002",
-      lotNumber: "LOT-2023-002",
-      variety: "fuerte"
+      farmLocation: "Location 2",
+      farmerId: "farmer2",
+      lotNumber: "L2",
+      variety: "hass"
     },
     transport: {
-      lotNumber: "LOT-2023-002",
-      transportCompany: "Transport Express",
-      driverName: "Karim Idrissi",
-      vehicleId: "VEH-003",
-      departureDateTime: "2023-04-21T05:00:00",
-      arrivalDateTime: "2023-04-21T13:45:00",
-      temperature: 4.2
+      lotNumber: "L2",
+      transportCompany: "Company 2",
+      driverName: "Driver 2",
+      vehicleId: "vehicle2",
+      departureDateTime: "2023-04-20T08:30:00",
+      arrivalDateTime: "2023-04-20T10:30:00",
+      temperature: 4
     },
     sorting: {
-      lotNumber: "LOT-2023-002",
-      sortingDate: "2023-04-22T08:30:00",
+      lotNumber: "L2",
+      sortingDate: "2023-04-20T11:30:00",
+      staffInvolved: ["staff3", "staff4"],
       qualityGrade: "B",
-      rejectedCount: 12
+      rejectedCount: 5,
+      notes: "Notes 2"
     },
     packaging: {
-      lotNumber: "LOT-2023-002",
-      packagingDate: "2023-04-23T11:00:00",
-      boxId: "BOX-002",
-      workerIds: ["WORK-003", "WORK-004"],
-      netWeight: 22.8,
-      avocadoCount: 110,
-      boxType: "carton"
+      lotNumber: "L2",
+      packagingDate: "2023-04-20T12:30:00",
+      boxId: "box2",
+      workerIds: ["worker3", "worker4"],
+      netWeight: 15,
+      avocadoCount: 30,
+      boxType: "case"
     },
     storage: {
-      boxId: "BOX-002",
-      entryDate: "2023-04-24T09:00:00",
-      storageTemperature: 3.8,
-      storageRoomId: "ROOM-002",
-      exitDate: "2023-04-28T11:00:00"
+      boxId: "box2",
+      entryDate: "2023-04-20T13:30:00",
+      storageTemperature: 4,
+      storageRoomId: "room2",
+      exitDate: "2023-04-21T09:30:00"
     },
     export: {
-      boxId: "BOX-002",
-      loadingDate: "2023-04-29T10:00:00",
-      containerId: "CONT-002",
-      driverName: "Youssef Alami",
-      vehicleId: "VEH-004",
-      destination: "London, UK"
+      boxId: "box2",
+      loadingDate: "2023-04-21T10:30:00",
+      containerId: "container2",
+      driverName: "Driver 2",
+      vehicleId: "vehicle2",
+      destination: "Destination 2"
     },
     delivery: {
-      boxId: "BOX-002",
-      estimatedDeliveryDate: "2023-05-03T00:00:00",
-      actualDeliveryDate: "",
-      clientName: "Fresh Foods Ltd",
-      received: false
-    }
+      boxId: "box2",
+      estimatedDeliveryDate: "2023-04-22T10:30:00",
+      actualDeliveryDate: "2023-04-22T11:30:00",
+      clientName: "Client 2",
+      clientLocation: "Location 2",
+      notes: "Notes 2"
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   }
 ];
 
 // Mock data for farms
-let mockFarms: Farm[] = [
+export let mockFarms: Farm[] = [
   {
-    id: 1,
+    id: "farm1",
     name: "Ferme Atlas",
-    location: "Marrakech, Morocco",
-    description: "Large avocado farm in the Atlas Mountains",
-    code: "FARM-001",
+    code: "FA-001",
+    location: "Marrakech",
     active: true,
+    description: "Ferme spécialisée dans les avocats",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   },
   {
-    id: 2,
-    name: "Ferme Souss",
-    location: "Agadir, Morocco",
-    description: "Coastal avocado farm in the Souss region",
-    code: "FARM-002",
+    id: "farm2",
+    name: "Ferme Sahara",
+    code: "FS-002",
+    location: "Agadir",
     active: true,
+    description: "Ferme spécialisée dans les oranges",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: "farm3",
+    name: "Ferme Oasis",
+    code: "FO-003",
+    location: "Tanger",
+    active: false,
+    description: "Ferme spécialisée dans les citrons",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   }
 ];
+
+// Mock data for lots
+export let mockLots: Lot[] = [
+  {
+    id: "lot1",
+    lotNumber: "LOT-001",
+    farmId: "farm1",
+    harvestDate: new Date().toISOString(),
+    initialQuantity: 1000,
+    currentStatus: "shipped",
+    notes: "Lot d'avocats de première qualité",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "lot2",
+    lotNumber: "LOT-002",
+    farmId: "farm2",
+    harvestDate: new Date().toISOString(),
+    initialQuantity: 500,
+    currentStatus: "delivered",
+    notes: "Lot d'oranges bio",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+];
+
+// Mock data for stats
+export const mockStats: StatsData = {
+  totalLots: 2,
+  activeFarms: mockFarms.filter(farm => farm.active).length,
+  inTransit: 1,
+  deliveredToday: 1
+};
 
 // Export mock API
 export const mockApi = {
   getAvocadoTrackingData: () => Promise.resolve(mockAvocadoTrackingData),
   getFarms: () => Promise.resolve(mockFarms),
+  getLots: () => Promise.resolve(mockLots),
+  getStats: () => Promise.resolve(mockStats),
   addAvocadoTracking: (data: AvocadoTracking) => {
     mockAvocadoTrackingData = [...mockAvocadoTrackingData, data];
     return Promise.resolve(data);
   },
   addFarm: (data: Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>) => {
+    console.log("Mock API: Adding farm with data:", data);
+    
+    // Validate required fields
+    if (!data.name || !data.location || !data.code) {
+      console.error("Mock API: Missing required fields", data);
+      return Promise.reject(new Error("Missing required fields: name, location, and code are required"));
+    }
+    
     const newFarm: Farm = {
       ...data,
-      id: mockFarms.length + 1,
+      id: `farm${mockFarms.length + 1}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+    
+    console.log("Mock API: Created new farm:", newFarm);
     mockFarms.push(newFarm);
+    console.log("Mock API: Updated farms array, new length:", mockFarms.length);
+    
     return Promise.resolve(newFarm);
   },
-  updateFarm: (id: number, data: Partial<Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>>) => {
+  addLot: (data: Omit<Lot, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const newLot: Lot = {
+      ...data,
+      id: `lot${mockLots.length + 1}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    mockLots.push(newLot);
+    return Promise.resolve(newLot);
+  },
+  updateFarm: (id: string, data: Partial<Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>>) => {
     const index = mockFarms.findIndex(f => f.id === id);
     if (index === -1) {
       return Promise.reject(new Error(`Farm with id ${id} not found`));
@@ -172,12 +249,33 @@ export const mockApi = {
     mockFarms[index] = updatedFarm;
     return Promise.resolve(updatedFarm);
   },
-  deleteFarm: (id: number) => {
+  updateLot: (id: string, data: Partial<Omit<Lot, 'id' | 'createdAt' | 'updatedAt'>>) => {
+    const index = mockLots.findIndex(l => l.id === id);
+    if (index === -1) {
+      return Promise.reject(new Error(`Lot with id ${id} not found`));
+    }
+    const updatedLot: Lot = {
+      ...mockLots[index],
+      ...data,
+      updatedAt: new Date().toISOString()
+    };
+    mockLots[index] = updatedLot;
+    return Promise.resolve(updatedLot);
+  },
+  deleteFarm: (id: string) => {
     const index = mockFarms.findIndex(f => f.id === id);
     if (index === -1) {
       return Promise.reject(new Error(`Farm with id ${id} not found`));
     }
     mockFarms = mockFarms.filter(f => f.id !== id);
+    return Promise.resolve();
+  },
+  deleteLot: (id: string) => {
+    const index = mockLots.findIndex(l => l.id === id);
+    if (index === -1) {
+      return Promise.reject(new Error(`Lot with id ${id} not found`));
+    }
+    mockLots = mockLots.filter(l => l.id !== id);
     return Promise.resolve();
   },
   generatePDF: (lotId: string | number) => {
@@ -198,91 +296,60 @@ export const mockApi = {
       <html>
         <head>
           <meta charset="UTF-8">
-          <title>Rapport de Suivi - ${lot.harvest.lotNumber}</title>
+          <title>Lot Tracking Report - ${lot.harvest.lotNumber}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 40px; }
-            h1 { text-align: center; color: #333; }
-            h2 { color: #666; border-bottom: 1px solid #ccc; }
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            h1 { color: #333; }
             .section { margin-bottom: 20px; }
-            .info { margin: 5px 0; }
+            .label { font-weight: bold; }
           </style>
         </head>
         <body>
-          <h1>RAPPORT DE SUIVI DES AVOCATS</h1>
-          <h2>Lot: ${lot.harvest.lotNumber}</h2>
-
+          <h1>Lot Tracking Report - ${lot.harvest.lotNumber}</h1>
+          
           <div class="section">
-            <h2>INFORMATIONS DE RÉCOLTE</h2>
-            <div class="info">Date de récolte: ${new Date(lot.harvest.harvestDate).toLocaleDateString('fr-FR')}</div>
-            <div class="info">Localisation: ${lot.harvest.farmLocation}</div>
-            <div class="info">Variété: ${lot.harvest.variety.toUpperCase()}</div>
-            <div class="info">ID Agriculteur: ${lot.harvest.farmerId}</div>
+            <h2>Harvest Information</h2>
+            <p><span class="label">Date:</span> ${new Date(lot.harvest.harvestDate).toLocaleDateString()}</p>
+            <p><span class="label">Location:</span> ${lot.harvest.farmLocation}</p>
+            <p><span class="label">Farmer ID:</span> ${lot.harvest.farmerId}</p>
+            <p><span class="label">Variety:</span> ${lot.harvest.variety}</p>
           </div>
-
+          
           <div class="section">
-            <h2>INFORMATIONS DE TRANSPORT</h2>
-            <div class="info">Société de transport: ${lot.transport.transportCompany}</div>
-            <div class="info">Chauffeur: ${lot.transport.driverName}</div>
-            <div class="info">ID Véhicule: ${lot.transport.vehicleId}</div>
-            <div class="info">Température: ${lot.transport.temperature}°C</div>
-            <div class="info">Départ: ${new Date(lot.transport.departureDateTime).toLocaleString('fr-FR')}</div>
-            <div class="info">Arrivée: ${new Date(lot.transport.arrivalDateTime).toLocaleString('fr-FR')}</div>
+            <h2>Transport Information</h2>
+            <p><span class="label">Company:</span> ${lot.transport.transportCompany}</p>
+            <p><span class="label">Driver:</span> ${lot.transport.driverName}</p>
+            <p><span class="label">Vehicle ID:</span> ${lot.transport.vehicleId}</p>
+            <p><span class="label">Temperature:</span> ${lot.transport.temperature}°C</p>
           </div>
-
+          
           <div class="section">
-            <h2>INFORMATIONS DE TRI</h2>
-            <div class="info">Date de tri: ${new Date(lot.sorting.sortingDate).toLocaleDateString('fr-FR')}</div>
-            <div class="info">Grade de qualité: ${lot.sorting.qualityGrade}</div>
-            <div class="info">Nombre rejeté: ${lot.sorting.rejectedCount}</div>
-            <div class="info">Personnel impliqué: ${lot.sorting.staffInvolved?.join(', ') || 'Non spécifié'}</div>
-            ${lot.sorting.notes ? `<div class="info">Notes: ${lot.sorting.notes}</div>` : ''}
+            <h2>Quality Information</h2>
+            <p><span class="label">Grade:</span> ${lot.sorting.qualityGrade}</p>
+            <p><span class="label">Rejected Count:</span> ${lot.sorting.rejectedCount}</p>
+            <p><span class="label">Notes:</span> ${lot.sorting.notes}</p>
           </div>
-
+          
           <div class="section">
-            <h2>INFORMATIONS D'EMBALLAGE</h2>
-            <div class="info">Date d'emballage: ${new Date(lot.packaging.packagingDate).toLocaleDateString('fr-FR')}</div>
-            <div class="info">ID Boîte: ${lot.packaging.boxId}</div>
-            <div class="info">Poids net: ${lot.packaging.netWeight} kg</div>
-            <div class="info">Nombre d'avocats: ${lot.packaging.avocadoCount}</div>
-            <div class="info">Type de boîte: ${lot.packaging.boxType.toUpperCase()}</div>
-            <div class="info">Personnel: ${lot.packaging.workerIds.join(', ')}</div>
+            <h2>Packaging Information</h2>
+            <p><span class="label">Box ID:</span> ${lot.packaging.boxId}</p>
+            <p><span class="label">Net Weight:</span> ${lot.packaging.netWeight} kg</p>
+            <p><span class="label">Count:</span> ${lot.packaging.avocadoCount}</p>
+            <p><span class="label">Type:</span> ${lot.packaging.boxType}</p>
           </div>
-
+          
           <div class="section">
-            <h2>INFORMATIONS DE STOCKAGE</h2>
-            <div class="info">Date d'entrée: ${new Date(lot.storage.entryDate).toLocaleDateString('fr-FR')}</div>
-            <div class="info">Température: ${lot.storage.storageTemperature}°C</div>
-            <div class="info">ID Salle: ${lot.storage.storageRoomId}</div>
-            <div class="info">Date de sortie: ${new Date(lot.storage.exitDate).toLocaleDateString('fr-FR')}</div>
-          </div>
-
-          <div class="section">
-            <h2>INFORMATIONS D'EXPORT</h2>
-            <div class="info">Date de chargement: ${new Date(lot.export.loadingDate).toLocaleDateString('fr-FR')}</div>
-            <div class="info">ID Conteneur: ${lot.export.containerId}</div>
-            <div class="info">Chauffeur: ${lot.export.driverName}</div>
-            <div class="info">ID Véhicule: ${lot.export.vehicleId}</div>
-            <div class="info">Destination: ${lot.export.destination}</div>
-          </div>
-
-          <div class="section">
-            <h2>INFORMATIONS DE LIVRAISON</h2>
-            <div class="info">Date de livraison estimée: ${new Date(lot.delivery.estimatedDeliveryDate).toLocaleDateString('fr-FR')}</div>
-            <div class="info">Date de livraison réelle: ${lot.delivery.actualDeliveryDate ? new Date(lot.delivery.actualDeliveryDate).toLocaleDateString('fr-FR') : 'Non livré'}</div>
-            <div class="info">Client: ${lot.delivery.clientName}</div>
-            <div class="info">Statut: ${lot.delivery.received ? 'Livré' : 'En cours'}</div>
-            <div class="info">Reçu par: ${lot.delivery.receivedBy || 'N/A'}</div>
-          </div>
-
-          <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #666;">
-            Rapport généré le: ${new Date().toLocaleString('fr-FR')}
+            <h2>Delivery Information</h2>
+            <p><span class="label">Client:</span> ${lot.delivery.clientName}</p>
+            <p><span class="label">Received:</span> ${lot.delivery.received ? 'Yes' : 'No'}</p>
+            <p><span class="label">Received By:</span> ${lot.delivery.receivedBy || 'N/A'}</p>
           </div>
         </body>
       </html>
     `;
-
-    // Create a Blob with the HTML content
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    return Promise.resolve(blob);
+    
+    // In a real implementation, this would generate a PDF from the HTML
+    // For now, we'll just return a mock Blob
+    return Promise.resolve(new Blob([htmlContent], { type: 'text/html' }));
   }
-}; 
+};

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // Base types for common fields
 export const baseSchema = {
-  id: z.number(),
+  id: z.string(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime().optional(),
 };
@@ -54,7 +54,7 @@ export type LotStatus = z.infer<typeof lotStatusSchema>;
 export const lotSchema = z.object({
   ...baseSchema,
   lotNumber: z.string().min(1).max(50),
-  farmId: z.number(),
+  farmId: z.string(),
   harvestDate: z.string().datetime(),
   initialQuantity: z.number().positive(),
   currentStatus: lotStatusSchema,
@@ -76,7 +76,7 @@ export type ActivityType = z.infer<typeof activityTypeSchema>;
 
 export const lotActivitySchema = z.object({
   ...baseSchema,
-  lotId: z.number(),
+  lotId: z.string(),
   activityType: activityTypeSchema,
   datePerformed: z.string().datetime(),
   quantity: z.number().positive(),
@@ -198,12 +198,13 @@ export const deliveryFormSchema = z.object({
   estimatedDeliveryDate: z.string().datetime(),
   actualDeliveryDate: z.string().datetime(),
   clientName: z.string().min(1),
-  received: z.boolean(),
-  receivedBy: z.string().optional(),
+  clientLocation: z.string().min(1),
+  notes: z.string().optional(),
 });
 
-// Combined Avocado Tracking Schema
+// Avocado Tracking Schema
 export const avocadoTrackingSchema = z.object({
+  ...baseSchema,
   harvest: harvestFormSchema,
   transport: transportFormSchema,
   sorting: sortingFormSchema,
@@ -213,4 +214,5 @@ export const avocadoTrackingSchema = z.object({
   delivery: deliveryFormSchema,
 });
 
+export const insertAvocadoTrackingSchema = avocadoTrackingSchema.omit({ id: true, createdAt: true, updatedAt: true });
 export type AvocadoTracking = z.infer<typeof avocadoTrackingSchema>;

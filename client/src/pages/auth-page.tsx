@@ -1,4 +1,4 @@
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth } from "@/components/auth-provider";
 import { Redirect } from "wouter";
 import { useState } from "react";
 import { z } from "zod";
@@ -10,11 +10,30 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
-import { registerSchema, loginSchema } from "@shared/schema";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { toast } from "react-hot-toast";
+
+// Define schemas locally since we can't import from @shared/schema
+const loginSchema = z.object({
+  email: z.string().email("Email invalide"),
+  password: z.string().min(6, "Le mot de passe doit contenir au moins 6 caractères"),
+});
+
+const registerSchema = z.object({
+  email: z.string().email("Email invalide"),
+  password: z.string().min(6, "Le mot de passe doit contenir au moins 6 caractères"),
+  confirmPassword: z.string(),
+  name: z.string().min(2, "Le nom doit contenir au moins 2 caractères"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Les mots de passe ne correspondent pas",
+  path: ["confirmPassword"],
+});
 
 export default function AuthPage() {
-  const { user, loginMutation, registerMutation } = useAuth();
+  const { user, login, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<string>("login");
+  const [registerLoading, setRegisterLoading] = useState(false);
   
   // If user is already logged in, redirect to dashboard
   if (user) {
@@ -25,29 +44,58 @@ export default function AuthPage() {
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      username: "",
+      email: "",
       password: "",
     },
   });
 
-  const onLoginSubmit = (values: z.infer<typeof loginSchema>) => {
-    loginMutation.mutate(values);
+  const onLoginSubmit = async (values: z.infer<typeof loginSchema>) => {
+    try {
+      await login(values.email, values.password);
+    } catch (error) {
+      // Error is already handled by useAuth
+      console.error("Login failed:", error);
+    }
   };
 
   // Register form
   const registerForm = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
-      username: "",
+      email: "",
       password: "",
       confirmPassword: "",
-      fullName: "",
-      role: "operator",
+      name: "",
     },
   });
 
-  const onRegisterSubmit = (values: z.infer<typeof registerSchema>) => {
-    registerMutation.mutate(values);
+  const onRegisterSubmit = async (values: z.infer<typeof registerSchema>) => {
+    setRegisterLoading(true);
+    try {
+      // Create a new user with Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        values.email,
+        values.password
+      );
+      
+      console.log("User registered successfully:", userCredential.user);
+      
+      // After successful registration, log the user in
+      await login(values.email, values.password);
+    } catch (error) {
+      console.error("Registration error:", error);
+      // Handle specific Firebase error codes
+      if (error.code === 'auth/email-already-in-use') {
+        toast.error("Cette adresse email est déjà utilisée");
+      } else if (error.code === 'auth/weak-password') {
+        toast.error("Le mot de passe est trop faible");
+      } else {
+        toast.error("Erreur lors de l'inscription");
+      }
+    } finally {
+      setRegisterLoading(false);
+    }
   };
 
   return (
@@ -74,12 +122,12 @@ export default function AuthPage() {
                   <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
                     <FormField
                       control={loginForm.control}
-                      name="username"
+                      name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nom d'utilisateur</FormLabel>
+                          <FormLabel>Email</FormLabel>
                           <FormControl>
-                            <Input placeholder="Entrez votre nom d'utilisateur" {...field} />
+                            <Input placeholder="Entrez votre email" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -98,12 +146,8 @@ export default function AuthPage() {
                         </FormItem>
                       )}
                     />
-                    <Button 
-                      type="submit" 
-                      className="w-full" 
-                      disabled={loginMutation.isPending}
-                    >
-                      {loginMutation.isPending ? (
+                    <Button type="submit" className="w-full" disabled={loading}>
+                      {loading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Connexion en cours...
@@ -121,7 +165,20 @@ export default function AuthPage() {
                   <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-4">
                     <FormField
                       control={registerForm.control}
-                      name="fullName"
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Entrez votre email" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={registerForm.control}
+                      name="name"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Nom complet</FormLabel>
@@ -134,25 +191,12 @@ export default function AuthPage() {
                     />
                     <FormField
                       control={registerForm.control}
-                      name="username"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nom d'utilisateur</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Choisissez un nom d'utilisateur" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={registerForm.control}
                       name="password"
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Mot de passe</FormLabel>
                           <FormControl>
-                            <Input type="password" placeholder="Choisissez un mot de passe" {...field} />
+                            <Input type="password" placeholder="Entrez votre mot de passe" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -171,32 +215,8 @@ export default function AuthPage() {
                         </FormItem>
                       )}
                     />
-                    <FormField
-                      control={registerForm.control}
-                      name="role"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Rôle</FormLabel>
-                          <FormControl>
-                            <select
-                              className="w-full h-10 px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                              {...field}
-                            >
-                              <option value="operator">Opérateur de ferme</option>
-                              <option value="client">Client</option>
-                              <option value="admin">Administrateur</option>
-                            </select>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button 
-                      type="submit" 
-                      className="w-full" 
-                      disabled={registerMutation.isPending}
-                    >
-                      {registerMutation.isPending ? (
+                    <Button type="submit" className="w-full" disabled={registerLoading}>
+                      {registerLoading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Inscription en cours...
@@ -210,49 +230,8 @@ export default function AuthPage() {
               </TabsContent>
             </Tabs>
           </CardContent>
-          <CardFooter className="text-center text-sm text-muted-foreground">
-            {activeTab === "login" ? (
-              <p>Pas encore de compte ? <Button variant="link" className="p-0" onClick={() => setActiveTab("register")}>Inscrivez-vous</Button></p>
-            ) : (
-              <p>Déjà un compte ? <Button variant="link" className="p-0" onClick={() => setActiveTab("login")}>Connectez-vous</Button></p>
-            )}
-          </CardFooter>
         </Card>
-        
-        <div className="hidden md:flex flex-col justify-center bg-primary-600 text-white p-8 rounded-lg shadow-lg">
-          <h1 className="text-3xl font-bold mb-6">Traçabilité Complète des Avocats</h1>
-          <p className="text-lg mb-4">
-            Notre système vous permet de suivre chaque étape du parcours de vos avocats,
-            de la récolte à la livraison chez le client final.
-          </p>
-          <ul className="space-y-3">
-            <li className="flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Suivi détaillé de chaque lot
-            </li>
-            <li className="flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Codes-barres uniques pour une identification rapide
-            </li>
-            <li className="flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Rapports PDF complets
-            </li>
-            <li className="flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Conformité aux normes Convo Bio
-            </li>
-          </ul>
-        </div>
       </div>
     </div>
   );
-}
+} 

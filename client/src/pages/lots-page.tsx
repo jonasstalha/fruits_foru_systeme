@@ -1,39 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, Truck, Package, Box, Ship, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
-import { api } from "@/lib/queryClient";
+import { api, getAvocadoTrackingData } from "@/lib/queryClient";
 import { AvocadoTracking } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useQuery } from "@tanstack/react-query";
 
 export default function LotsPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [lots, setLots] = useState<AvocadoTracking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchLots();
-  }, []);
-
-  const fetchLots = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await api.get<AvocadoTracking[]>("/api/avocado-tracking");
-      setLots(Array.isArray(response) ? response : []);
-    } catch (error) {
-      console.error("Error fetching lots:", error);
-      setError("Impossible de charger les lots. Veuillez réessayer plus tard.");
-      setLots([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  
+  // Use React Query to fetch and cache the data
+  const { data: lots = [], isLoading: loading, error, refetch } = useQuery({
+    queryKey: ['avocadoTracking'],
+    queryFn: getAvocadoTrackingData()
+  });
 
   const filteredLots = lots.filter(
     (lot) =>
@@ -56,8 +41,8 @@ export default function LotsPage() {
   };
 
   const getStatusBadge = (lot: AvocadoTracking) => {
-    if (lot.delivery.received) {
-      return <Badge className="bg-green-100 text-green-800">Livré</Badge>;
+    if (lot.delivery.actualDeliveryDate) {
+      return <Badge variant="success">Livré</Badge>;
     }
     if (lot.export.loadingDate) {
       return <Badge className="bg-blue-100 text-blue-800">En Export</Badge>;
@@ -94,10 +79,12 @@ export default function LotsPage() {
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Erreur</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            {error instanceof Error ? error.message : "Impossible de charger les lots. Veuillez réessayer plus tard."}
+          </AlertDescription>
         </Alert>
         <div className="mt-4">
-          <Button onClick={fetchLots}>Réessayer</Button>
+          <Button onClick={() => refetch()}>Réessayer</Button>
         </div>
       </div>
     );

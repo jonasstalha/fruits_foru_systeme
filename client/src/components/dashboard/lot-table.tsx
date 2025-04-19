@@ -46,7 +46,24 @@ export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
   
   // Format harvest date
   const formatDate = (dateString: string) => {
-    return format(new Date(dateString), "dd/MM/yyyy", { locale: fr });
+    try {
+      // Check if the date string is valid
+      if (!dateString || dateString === "") {
+        return "N/A";
+      }
+      
+      const date = new Date(dateString);
+      
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        return "Date invalide";
+      }
+      
+      return format(date, "dd/MM/yyyy", { locale: fr });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "Date invalide";
+    }
   };
   
   // Get status badge class based on current status

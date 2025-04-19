@@ -7,10 +7,39 @@ interface ProgressTrackerProps {
 }
 
 export default function ProgressTracker({ activities }: ProgressTrackerProps) {
+  // Format date helper function
+  const formatDate = (dateString: string) => {
+    try {
+      // Check if the date string is valid
+      if (!dateString || dateString === "") {
+        return "N/A";
+      }
+      
+      const date = new Date(dateString);
+      
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        return "Date invalide";
+      }
+      
+      return format(date, "dd/MM HH:mm", { locale: fr });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "Date invalide";
+    }
+  };
+
   // Sort activities by date
-  const sortedActivities = [...activities].sort((a, b) => 
-    new Date(a.datePerformed).getTime() - new Date(b.datePerformed).getTime()
-  );
+  const sortedActivities = [...activities].sort((a, b) => {
+    const dateA = new Date(a.datePerformed);
+    const dateB = new Date(b.datePerformed);
+    
+    // Handle invalid dates by putting them at the end
+    if (isNaN(dateA.getTime())) return 1;
+    if (isNaN(dateB.getTime())) return -1;
+    
+    return dateA.getTime() - dateB.getTime();
+  });
   
   // Define all possible stages in order
   const stages = [
@@ -47,8 +76,8 @@ export default function ProgressTracker({ activities }: ProgressTrackerProps) {
             >
               <div className="text-xs">
                 {activity 
-                  ? format(new Date(activity.datePerformed), "dd/MM HH:mm", { locale: fr })
-                  : "––/––"}
+                  ? formatDate(activity.datePerformed)
+                  : "En attente"}
               </div>
               <div className="text-sm mt-1">{stage.label}</div>
             </li>
