@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,10 +79,8 @@ export default function NewEntryPage() {
     setIsSubmitting(true);
     
     try {
-      // Create a copy of the form data to avoid modifying the state directly
       const updatedFormData = { ...formData };
       
-      // Ensure lot numbers are consistent across all sections
       const lotNumber = updatedFormData.harvest?.lotNumber;
       if (lotNumber) {
         if (updatedFormData.transport) {
@@ -96,7 +94,6 @@ export default function NewEntryPage() {
         }
       }
       
-      // Ensure box IDs are consistent
       const boxId = updatedFormData.packaging?.boxId;
       if (boxId) {
         if (updatedFormData.storage) {
@@ -109,16 +106,72 @@ export default function NewEntryPage() {
           updatedFormData.delivery.boxId = boxId;
         }
       }
+
+      const cleanData: Partial<AvocadoTracking> = {
+        harvest: {
+          harvestDate: updatedFormData.harvest?.harvestDate || "",
+          farmLocation: updatedFormData.harvest?.farmLocation || "",
+          farmerId: updatedFormData.harvest?.farmerId || "",
+          lotNumber: updatedFormData.harvest?.lotNumber || "",
+          variety: updatedFormData.harvest?.variety || "hass"
+        },
+        transport: {
+          lotNumber: updatedFormData.transport?.lotNumber || "",
+          transportCompany: updatedFormData.transport?.transportCompany || "",
+          driverName: updatedFormData.transport?.driverName || "",
+          vehicleId: updatedFormData.transport?.vehicleId || "",
+          departureDateTime: updatedFormData.transport?.departureDateTime || "",
+          arrivalDateTime: updatedFormData.transport?.arrivalDateTime || "",
+          temperature: updatedFormData.transport?.temperature || 0
+        },
+        sorting: {
+          lotNumber: updatedFormData.sorting?.lotNumber || "",
+          sortingDate: updatedFormData.sorting?.sortingDate || "",
+          qualityGrade: updatedFormData.sorting?.qualityGrade || "A",
+          rejectedCount: updatedFormData.sorting?.rejectedCount || 0,
+          notes: updatedFormData.sorting?.notes || ""
+        },
+        packaging: {
+          lotNumber: updatedFormData.packaging?.lotNumber || "",
+          packagingDate: updatedFormData.packaging?.packagingDate || "",
+          boxId: updatedFormData.packaging?.boxId || "",
+          workerIds: updatedFormData.packaging?.workerIds || [],
+          netWeight: updatedFormData.packaging?.netWeight || 0,
+          avocadoCount: updatedFormData.packaging?.avocadoCount || 0,
+          boxType: updatedFormData.packaging?.boxType || "case"
+        },
+        storage: {
+          boxId: updatedFormData.storage?.boxId || "",
+          entryDate: updatedFormData.storage?.entryDate || "",
+          storageTemperature: updatedFormData.storage?.storageTemperature || 0,
+          storageRoomId: updatedFormData.storage?.storageRoomId || "",
+          exitDate: updatedFormData.storage?.exitDate || ""
+        },
+        export: {
+          boxId: updatedFormData.export?.boxId || "",
+          loadingDate: updatedFormData.export?.loadingDate || "",
+          containerId: updatedFormData.export?.containerId || "",
+          driverName: updatedFormData.export?.driverName || "",
+          vehicleId: updatedFormData.export?.vehicleId || "",
+          destination: updatedFormData.export?.destination || ""
+        },
+        delivery: {
+          boxId: updatedFormData.delivery?.boxId || "",
+          estimatedDeliveryDate: updatedFormData.delivery?.estimatedDeliveryDate || "",
+          actualDeliveryDate: updatedFormData.delivery?.actualDeliveryDate || "",
+          clientName: updatedFormData.delivery?.clientName || "",
+          clientLocation: updatedFormData.delivery?.clientLocation || "",
+          notes: updatedFormData.delivery?.notes || ""
+        }
+      };
       
-      // Use the addAvocadoTracking function directly
-      await addAvocadoTracking(updatedFormData as AvocadoTracking)();
+      await addAvocadoTracking(cleanData as AvocadoTracking)();
       
       toast({
         title: "Succès",
         description: "Le suivi des avocats a été enregistré avec succès",
       });
       
-      // Redirect to the lots page
       setLocation("/lots");
     } catch (error) {
       console.error("Error submitting form:", error);
@@ -133,12 +186,53 @@ export default function NewEntryPage() {
   };
 
   const handleChange = (section: keyof AvocadoTracking, field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
+    setFormData((prev) => {
+      const updatedSection = {
+        ...(prev[section] as Record<string, any> || {}),
         [field]: value,
-      },
+      };
+      return {
+        ...prev,
+        [section]: updatedSection,
+      };
+    });
+  };
+
+  const addNewPackage = () => {
+    const newPackage: AvocadoTracking["packaging"] = {
+      lotNumber: "",
+      packagingDate: "",
+      boxId: "",
+      workerIds: [],
+      netWeight: 0,
+      avocadoCount: 12,
+      boxType: "case",
+    };
+    setFormData((prev) => {
+      const updatedPackaging = Array.isArray(prev.packaging) ? prev.packaging : [];
+      return {
+        ...prev,
+        packaging: [...updatedPackaging, newPackage],
+      };
+    });
+  };
+
+  const removePackage = (index: number) => {
+    if (!Array.isArray(formData.packaging)) return;
+    const updated = formData.packaging.filter((_, i) => i !== index);
+    setFormData((prev) => ({
+      ...prev,
+      packaging: updated,
+    }));
+  };
+
+  const handlePackageChange = (index: number, field: keyof AvocadoTracking["packaging"], value: any) => {
+    if (!Array.isArray(formData.packaging)) return;
+    const updated = [...formData.packaging];
+    updated[index] = { ...updated[index], [field]: value };
+    setFormData((prev) => ({
+      ...prev,
+      packaging: updated,
     }));
   };
 
@@ -164,6 +258,7 @@ export default function NewEntryPage() {
                   required
                 />
               </div>
+      
               <div className="space-y-2">
                 <Label htmlFor="farmLocation">Localisation de la ferme</Label>
                 <Input
@@ -173,6 +268,7 @@ export default function NewEntryPage() {
                   required
                 />
               </div>
+      
               <div className="space-y-2">
                 <Label htmlFor="farmerId">ID Agriculteur</Label>
                 <Input
@@ -182,6 +278,7 @@ export default function NewEntryPage() {
                   required
                 />
               </div>
+      
               <div className="space-y-2">
                 <Label htmlFor="lotNumber">Numéro de lot</Label>
                 <Input
@@ -191,9 +288,26 @@ export default function NewEntryPage() {
                   required
                 />
               </div>
+      
+              <div className="space-y-2">
+                <Label htmlFor="avocadoType">Type d'avocat</Label>
+                <Select
+                  value={(formData.harvest as any)?.avocadoType || ""}
+                  onValueChange={(value) => handleChange("harvest", "avocadoType", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionner un type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="conventionnel">Conventionnel</SelectItem>
+                    <SelectItem value="bio">Bio</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+      
               <div className="space-y-2">
                 <Label htmlFor="variety">Variété d'avocat</Label>
-                <Select 
+                <Select
                   value={formData.harvest?.variety}
                   onValueChange={(value) => handleChange("harvest", "variety", value)}
                 >
@@ -314,7 +428,7 @@ export default function NewEntryPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="rejectedCount">Nombre d'avocats rejetés</Label>
+                <Label htmlFor="rejectedCount">avocats rejetés</Label>
                 <Input
                   id="rejectedCount"
                   type="number"
@@ -327,82 +441,107 @@ export default function NewEntryPage() {
           </Card>
         );
 
-      case 4:
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle>📦 Emballage</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="packagingDate">Date d'emballage</Label>
-                <Input
-                  id="packagingDate"
-                  type="datetime-local"
-                  value={formData.packaging?.packagingDate}
-                  onChange={(e) => handleChange("packaging", "packagingDate", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="boxId">ID de la boîte</Label>
-                <Input
-                  id="boxId"
-                  value={formData.packaging?.boxId}
-                  onChange={(e) => handleChange("packaging", "boxId", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="boxType">Type de boîte</Label>
-                <Select
-                  value={formData.packaging?.boxType || "case"}
-                  onValueChange={(value) => handleChange("packaging", "boxType", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un type de boîte" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="case">Caisse</SelectItem>
-                    <SelectItem value="carton">Carton</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="netWeight">Poids net (kg)</Label>
-                <Input
-                  id="netWeight"
-                  type="number"
-                  value={formData.packaging?.netWeight}
-                  onChange={(e) => handleChange("packaging", "netWeight", parseFloat(e.target.value))}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="avocadoCount">Nombre d'avocats</Label>
-                <Select
-                  value={formData.packaging?.avocadoCount?.toString() || "12"}
-                  onValueChange={(value) => handleChange("packaging", "avocadoCount", parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner le nombre d'avocats" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 avocats</SelectItem>
-                    <SelectItem value="12">12 avocats</SelectItem>
-                    <SelectItem value="14">14 avocats</SelectItem>
-                    <SelectItem value="16">16 avocats</SelectItem>
-                    <SelectItem value="18">18 avocats</SelectItem>
-                    <SelectItem value="20">20 avocats</SelectItem>
-                    <SelectItem value="22">22 avocats</SelectItem>
-                    <SelectItem value="24">24 avocats</SelectItem>
-                    <SelectItem value="26">26 avocats</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-        );
+        case 4:
+          const packages = Array.isArray(formData.packaging) ? formData.packaging : [];
+        
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle>📦 Emballage</CardTitle>
+                <CardDescription>Gérez les différents lots d'emballage.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {packages.map((pkg, index) => (
+                  <div key={index} className="border p-4 rounded-md space-y-4">
+                    <h3 className="font-medium">Lot #{index + 1}</h3>
+        
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`boxId-${index}`}>🔢 ID de la boîte</Label>
+                        <Input
+                          id={`boxId-${index}`}
+                          value={pkg.boxId || ""}
+                          onChange={(e) =>
+                            handlePackageChange(index, "boxId", e.target.value)
+                          }
+                          placeholder="Ex: BX2024-0987"
+                        />
+                      </div>
+        
+                      <div className="space-y-2">
+                        <Label htmlFor={`boxType-${index}`}>📦 Type de boîte</Label>
+                        <Select
+                          value={pkg.boxType || ""}
+                          onValueChange={(value) =>
+                            handlePackageChange(index, "boxType", value)
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="caisse">Caisse en bois</SelectItem>
+                            <SelectItem value="boite">Boîte carton</SelectItem>
+                            <SelectItem value="palette">Palette</SelectItem>
+                            <SelectItem value="sac">Sac plastique</SelectItem>
+                            <SelectItem value="autre">Autre</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+        
+                      <div className="space-y-2">
+                        <Label htmlFor={`avocadoCount-${index}`}>🥑 Nombre d'avocats</Label>
+                        <Select
+                          value={pkg.avocadoCount?.toString() || ""}
+                          onValueChange={(value) =>
+                            handlePackageChange(index, "avocadoCount", parseInt(value))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30].map((count) => (
+                              <SelectItem key={count} value={count.toString()}>
+                                {count} avocat{count > 1 ? "s" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+        
+                      <div className="space-y-2">
+                        <Label htmlFor={`netWeight-${index}`}>⚖️ Poids net (kg)</Label>
+                        <Input
+                          id={`netWeight-${index}`}
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          value={pkg.netWeight || ""}
+                          onChange={(e) =>
+                            handlePackageChange(index, "netWeight", parseFloat(e.target.value))
+                          }
+                        />
+                      </div>
+                    </div>
+        
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removePackage(index)}
+                      className="text-red-500"
+                    >
+                      ❌ Supprimer ce lot
+                    </Button>
+                  </div>
+                ))}
+        
+                <Button variant="secondary" onClick={addNewPackage}>
+                  ➕ Ajouter un lot d'emballage
+                </Button>
+              </CardContent>
+            </Card>
+          );
 
       case 5:
         return (
@@ -536,26 +675,25 @@ export default function NewEntryPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold mb-4">Nouvelle entrée de suivi d'avocats</h2>
-        
-        {/* Progress indicator */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Étape {currentStep} sur 7</span>
-            <span className="text-sm text-muted-foreground">{Math.round((currentStep / 7) * 100)}% complété</span>
+    <div className="max-w-4xl mx-auto p-6 bg-gray-50 rounded-lg shadow-md">
+      <div className="mb-8">
+
+        <h2 className="text-3xl font-extrabold text-gray-800 mb-6">Nouvelle entrée de suivi d'avocats</h2>
+
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-semibold text-gray-600">Étape {currentStep} sur 7</span>
+            <span className="text-sm text-gray-500">{Math.round((currentStep / 7) * 100)}% complété</span>
           </div>
-          <div className="w-full bg-muted rounded-full h-2.5">
+          <div className="w-full bg-gray-200 rounded-full h-3">
             <div 
-              className="bg-primary h-2.5 rounded-full transition-all duration-300" 
+              className="bg-blue-500 h-3 rounded-full transition-all duration-300" 
               style={{ width: `${(currentStep / 7) * 100}%` }}
             ></div>
           </div>
         </div>
-        
-        {/* Step indicators */}
-        <div className="flex items-center justify-between mb-6">
+
+        <div className="flex items-center justify-between mb-8">
           {[
             { number: 1, label: "Récolte", icon: "📝" },
             { number: 2, label: "Transport", icon: "🚛" },
@@ -567,43 +705,43 @@ export default function NewEntryPage() {
           ].map((step) => (
             <div 
               key={step.number}
-              className={`flex flex-col items-center ${
+              className={`flex flex-col items-center text-center space-y-1 ${
                 step.number === currentStep 
-                  ? "text-primary font-medium" 
+                  ? "text-blue-600 font-bold" 
                   : step.number < currentStep 
-                    ? "text-primary/70" 
-                    : "text-muted-foreground"
+                    ? "text-blue-400" 
+                    : "text-gray-400"
               }`}
             >
               <div 
-                className={`w-10 h-10 rounded-full flex items-center justify-center mb-1 ${
+                className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 ${
                   step.number === currentStep 
-                    ? "bg-primary text-primary-foreground" 
+                    ? "bg-blue-500 text-white" 
                     : step.number < currentStep 
-                      ? "bg-primary/20" 
-                      : "bg-muted"
+                      ? "bg-blue-100" 
+                      : "bg-gray-200"
                 }`}
               >
                 {step.icon}
               </div>
-              <span className="text-xs">{step.label}</span>
+              <span className="text-xs font-medium">{step.label}</span>
             </div>
           ))}
         </div>
       </div>
-      
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-card rounded-lg shadow-sm border p-6">
+
+      <form onSubmit={handleSubmit} className="space-y-8">
+        <div className="bg-white rounded-lg shadow-sm border p-8">
           {renderStep()}
         </div>
 
-        <div className="flex justify-between pt-4">
+        <div className="flex justify-between pt-6">
           <Button
             type="button"
             variant="outline"
             onClick={prevStep}
             disabled={currentStep === 1 || isSubmitting}
-            className="min-w-[120px]"
+            className="min-w-[120px] bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
           >
             {currentStep === 1 ? "Début" : "Précédent"}
           </Button>
@@ -612,7 +750,7 @@ export default function NewEntryPage() {
               type="button" 
               onClick={nextStep}
               disabled={isSubmitting}
-              className="min-w-[120px]"
+              className="min-w-[120px] bg-blue-500 hover:bg-blue-600 text-white"
             >
               Suivant
             </Button>
@@ -620,7 +758,7 @@ export default function NewEntryPage() {
             <Button 
               type="submit"
               disabled={isSubmitting}
-              className="min-w-[120px]"
+              className="min-w-[120px] bg-green-500 hover:bg-green-600 text-white"
             >
               {isSubmitting ? (
                 <>

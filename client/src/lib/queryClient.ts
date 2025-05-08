@@ -187,7 +187,7 @@ export const addLot = (data: Omit<Lot, 'id' | 'createdAt' | 'updatedAt'>) => {
   });
 };
 
-export const updateFarm = (id: number, data: Partial<Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>>) => {
+export const updateFarm = (id: string, data: Partial<Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>>) => {
   return getQueryFn<Farm>({
     queryKey: ['farms', 'update', id],
     queryFn: () => apiRequest<Farm>('PUT', `/api/farms/${id}`, data)
@@ -201,7 +201,7 @@ export const updateLot = (id: number, data: Partial<Omit<Lot, 'id' | 'createdAt'
   });
 };
 
-export const deleteFarm = (id: number) => {
+export const deleteFarm = (id: string) => {
   return getQueryFn<void>({
     queryKey: ['farms', 'delete', id],
     queryFn: () => apiRequest<void>('DELETE', `/api/farms/${id}`)

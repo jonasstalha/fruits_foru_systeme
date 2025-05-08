@@ -9,6 +9,8 @@ interface TopBarProps {
   subtitle?: string;
 }
 
+
+
 export default function TopBar({ title, subtitle }: TopBarProps) {
   const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

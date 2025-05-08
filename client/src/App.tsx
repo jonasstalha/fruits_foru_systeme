@@ -16,7 +16,11 @@ import StatisticsPage from "@/pages/statistics-page";
 import MainLayout from "@/components/layout/main-layout";
 import { LoginPage } from "@/pages/login-page";
 import { AuthProvider } from "@/components/auth-provider";
-
+import RapportGenerating from "./pages/logistique/rapport-generating";
+import facturestemplates from "./pages/logistique/factures-templates";
+import inventory from "./pages/logistique/inventory";
+import qualitycontrol from "./pages/quality/qualitycontrol";
+import personnelmanagement from "./pages/personnele/personnelmanagement";
 function AuthenticatedRoutes() {
   return (
     <MainLayout>
@@ -31,6 +35,12 @@ function AuthenticatedRoutes() {
         <Route path="/warehouses" component={WarehousesPage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/statistics" component={StatisticsPage} />
+        <Route path="/rapport-generating" component={RapportGenerating} />
+        <Route path="/factures-templates" component={facturestemplates} />
+        <Route path="/traceability" component={StatisticsPage} />
+        <Route path="/inventory" component={inventory} />
+        <Route path="/qualitycontrol" component={qualitycontrol} />
+        <Route path="/personnelmanagement" component={personnelmanagement} />
         <Route component={NotFound} />
       </Switch>
     </MainLayout>

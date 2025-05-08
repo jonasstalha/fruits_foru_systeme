@@ -14,6 +14,9 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { Farm, Lot, AvocadoTracking, StatsData } from "@shared/schema";
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from './firebase';
+import { generateLotPDF } from './pdfGenerator';
 
 // Helper function to convert Firestore timestamp to ISO string
 const timestampToISOString = (timestamp: any) => {
@@ -68,6 +71,7 @@ const convertAvocadoTrackingDoc = (doc: any): AvocadoTracking => {
       variety: data.harvest.variety
     },
     transport: {
+      lotNumber: data.transport.lotNumber,
       transportCompany: data.transport.transportCompany,
       driverName: data.transport.driverName,
       vehicleId: data.transport.vehicleId,
@@ -76,13 +80,14 @@ const convertAvocadoTrackingDoc = (doc: any): AvocadoTracking => {
       temperature: data.transport.temperature
     },
     sorting: {
+      lotNumber: data.sorting.lotNumber,
       sortingDate: timestampToISOString(data.sorting.sortingDate),
-      staffInvolved: data.sorting.staffInvolved || [],
       qualityGrade: data.sorting.qualityGrade,
       rejectedCount: data.sorting.rejectedCount,
       notes: data.sorting.notes || ""
     },
     packaging: {
+      lotNumber: data.packaging.lotNumber,
       packagingDate: timestampToISOString(data.packaging.packagingDate),
       boxId: data.packaging.boxId,
       workerIds: data.packaging.workerIds || [],
@@ -91,12 +96,14 @@ const convertAvocadoTrackingDoc = (doc: any): AvocadoTracking => {
       boxType: data.packaging.boxType || "case"
     },
     storage: {
+      boxId: data.storage.boxId,
       entryDate: timestampToISOString(data.storage.entryDate),
       storageTemperature: data.storage.storageTemperature,
       storageRoomId: data.storage.storageRoomId,
       exitDate: timestampToISOString(data.storage.exitDate)
     },
     export: {
+      boxId: data.export.boxId,
       loadingDate: timestampToISOString(data.export.loadingDate),
       containerId: data.export.containerId,
       driverName: data.export.driverName,
@@ -104,6 +111,7 @@ const convertAvocadoTrackingDoc = (doc: any): AvocadoTracking => {
       destination: data.export.destination
     },
     delivery: {
+      boxId: data.delivery.boxId,
       estimatedDeliveryDate: timestampToISOString(data.delivery.estimatedDeliveryDate),
       actualDeliveryDate: timestampToISOString(data.delivery.actualDeliveryDate),
       clientName: data.delivery.clientName,
@@ -118,10 +126,13 @@ const convertAvocadoTrackingDoc = (doc: any): AvocadoTracking => {
 // Farms API
 export const getFarms = async (): Promise<Farm[]> => {
   try {
+    console.log("Fetching farms from Firestore");
     const farmsRef = collection(db, "farms");
     const q = query(farmsRef, orderBy("createdAt", "desc"));
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(convertFarmDoc);
+    const farms = querySnapshot.docs.map(convertFarmDoc);
+    console.log("Fetched farms:", farms);
+    return farms;
   } catch (error) {
     console.error("Error getting farms:", error);
     throw error;
@@ -130,31 +141,79 @@ export const getFarms = async (): Promise<Farm[]> => {
 
 export const addFarm = async (data: Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>): Promise<Farm> => {
   try {
+    console.log("Adding farm to Firestore:", data);
+    
+    // Validate required fields
+    if (!data.name || !data.location || !data.code) {
+      console.error("Missing required fields:", { data });
+      throw new Error("Missing required fields: name, location, and code are required");
+    }
+    
+    // Validate field types
+    if (typeof data.name !== 'string' || typeof data.location !== 'string' || typeof data.code !== 'string') {
+      console.error("Invalid field types:", { data });
+      throw new Error("Invalid field types: name, location, and code must be strings");
+    }
+    
+    // Validate boolean field
+    if (typeof data.active !== 'boolean') {
+      console.error("Invalid active field type:", { data });
+      throw new Error("Invalid field type: active must be a boolean");
+    }
+    
     const farmsRef = collection(db, "farms");
     const newFarm = {
       ...data,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
+    
+    console.log("Creating farm document with data:", newFarm);
     const docRef = await addDoc(farmsRef, newFarm);
+    console.log("Farm document created with ID:", docRef.id);
+    
     const docSnap = await getDoc(docRef);
-    return convertFarmDoc(docSnap);
+    if (!docSnap.exists()) {
+      console.error("Document not found after creation:", docRef.id);
+      throw new Error("Failed to create farm document");
+    }
+    
+    const farm = convertFarmDoc(docSnap);
+    console.log("Created farm:", farm);
+    
+    return farm;
   } catch (error) {
     console.error("Error adding farm:", error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to add farm: ${error.message}`);
+    }
     throw error;
   }
 };
 
 export const updateFarm = async (id: string, data: Partial<Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Farm> => {
   try {
+    console.log("Updating farm in Firestore:", { id, data });
+    
+    // Validate required fields if they are being updated
+    if (data.name === "" || data.location === "" || data.code === "") {
+      throw new Error("Required fields cannot be empty");
+    }
+    
     const farmRef = doc(db, "farms", id);
     const updateData = {
       ...data,
       updatedAt: serverTimestamp()
     };
+    
+    console.log("Updating farm document with data:", updateData);
     await updateDoc(farmRef, updateData);
+    
     const docSnap = await getDoc(farmRef);
-    return convertFarmDoc(docSnap);
+    const farm = convertFarmDoc(docSnap);
+    console.log("Updated farm:", farm);
+    
+    return farm;
   } catch (error) {
     console.error("Error updating farm:", error);
     throw error;
@@ -163,8 +222,10 @@ export const updateFarm = async (id: string, data: Partial<Omit<Farm, 'id' | 'cr
 
 export const deleteFarm = async (id: string): Promise<void> => {
   try {
+    console.log("Deleting farm from Firestore:", id);
     const farmRef = doc(db, "farms", id);
     await deleteDoc(farmRef);
+    console.log("Farm deleted successfully");
   } catch (error) {
     console.error("Error deleting farm:", error);
     throw error;
@@ -230,7 +291,7 @@ export const deleteLot = async (id: string): Promise<void> => {
 // Avocado Tracking API
 export const getAvocadoTrackingData = async (): Promise<AvocadoTracking[]> => {
   try {
-    const trackingRef = collection(db, "avocadoTracking");
+    const trackingRef = collection(db, "avocado-tracking");
     const q = query(trackingRef, orderBy("createdAt", "desc"));
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(convertAvocadoTrackingDoc);
@@ -242,13 +303,70 @@ export const getAvocadoTrackingData = async (): Promise<AvocadoTracking[]> => {
 
 export const addAvocadoTracking = async (data: Omit<AvocadoTracking, 'id' | 'createdAt' | 'updatedAt'>): Promise<AvocadoTracking> => {
   try {
-    const trackingRef = collection(db, "avocadoTracking");
-    const newTracking = {
-      ...data,
+    const trackingRef = collection(db, "avocado-tracking");
+    
+    // Convert empty strings to null and ensure proper types
+    const cleanData = {
+      harvest: {
+        harvestDate: data.harvest?.harvestDate || "",
+        farmLocation: data.harvest?.farmLocation || "",
+        farmerId: data.harvest?.farmerId || "",
+        lotNumber: data.harvest?.lotNumber || "",
+        variety: data.harvest?.variety || "hass"
+      },
+      transport: {
+        lotNumber: data.transport?.lotNumber || "",
+        transportCompany: data.transport?.transportCompany || "",
+        driverName: data.transport?.driverName || "",
+        vehicleId: data.transport?.vehicleId || "",
+        departureDateTime: data.transport?.departureDateTime || "",
+        arrivalDateTime: data.transport?.arrivalDateTime || "",
+        temperature: data.transport?.temperature || 0
+      },
+      sorting: {
+        lotNumber: data.sorting?.lotNumber || "",
+        sortingDate: data.sorting?.sortingDate || "",
+        qualityGrade: data.sorting?.qualityGrade || "A",
+        rejectedCount: data.sorting?.rejectedCount || 0,
+        notes: data.sorting?.notes || ""
+      },
+      packaging: {
+        lotNumber: data.packaging?.lotNumber || "",
+        packagingDate: data.packaging?.packagingDate || "",
+        boxId: data.packaging?.boxId || "",
+        workerIds: data.packaging?.workerIds || [],
+        netWeight: data.packaging?.netWeight || 0,
+        avocadoCount: data.packaging?.avocadoCount || 0,
+        boxType: data.packaging?.boxType || "case"
+      },
+      storage: {
+        boxId: data.storage?.boxId || "",
+        entryDate: data.storage?.entryDate || "",
+        storageTemperature: data.storage?.storageTemperature || 0,
+        storageRoomId: data.storage?.storageRoomId || "",
+        exitDate: data.storage?.exitDate || ""
+      },
+      export: {
+        boxId: data.export?.boxId || "",
+        loadingDate: data.export?.loadingDate || "",
+        containerId: data.export?.containerId || "",
+        driverName: data.export?.driverName || "",
+        vehicleId: data.export?.vehicleId || "",
+        destination: data.export?.destination || ""
+      },
+      delivery: {
+        boxId: data.delivery?.boxId || "",
+        estimatedDeliveryDate: data.delivery?.estimatedDeliveryDate || "",
+        actualDeliveryDate: data.delivery?.actualDeliveryDate || "",
+        clientName: data.delivery?.clientName || "",
+        clientLocation: data.delivery?.clientLocation || "",
+        notes: data.delivery?.notes || ""
+      },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
-    const docRef = await addDoc(trackingRef, newTracking);
+
+    const docRef = await addDoc(trackingRef, cleanData);
     const docSnap = await getDoc(docRef);
     return convertAvocadoTrackingDoc(docSnap);
   } catch (error) {
@@ -259,7 +377,7 @@ export const addAvocadoTracking = async (data: Omit<AvocadoTracking, 'id' | 'cre
 
 export const updateAvocadoTracking = async (id: string, data: Partial<Omit<AvocadoTracking, 'id' | 'createdAt' | 'updatedAt'>>): Promise<AvocadoTracking> => {
   try {
-    const trackingRef = doc(db, "avocadoTracking", id);
+    const trackingRef = doc(db, "avocado-tracking", id);
     const updateData = {
       ...data,
       updatedAt: serverTimestamp()
@@ -275,7 +393,7 @@ export const updateAvocadoTracking = async (id: string, data: Partial<Omit<Avoca
 
 export const deleteAvocadoTracking = async (id: string): Promise<void> => {
   try {
-    const trackingRef = doc(db, "avocadoTracking", id);
+    const trackingRef = doc(db, "avocado-tracking", id);
     await deleteDoc(trackingRef);
   } catch (error) {
     console.error("Error deleting avocado tracking:", error);
@@ -325,6 +443,35 @@ export const getStats = async (): Promise<StatsData> => {
     };
   } catch (error) {
     console.error("Error getting stats:", error);
+    throw error;
+  }
+};
+
+// PDF Generation and Storage
+export const generateAndStorePDF = async (lotId: string): Promise<string> => {
+  try {
+    // Get the lot data
+    const entries = await getAvocadoTrackingData();
+    const lot = entries.find(entry => entry.harvest.lotNumber === lotId);
+    
+    if (!lot) {
+      throw new Error(`Lot ${lotId} not found`);
+    }
+
+    // Generate PDF
+    const pdfBlob = await generateLotPDF(lot);
+
+    // Upload to Firebase Storage
+    const storageRef = ref(storage, `reports/${lotId}.pdf`);
+    await uploadBytes(storageRef, pdfBlob, {
+      contentType: 'application/pdf'
+    });
+
+    // Get download URL
+    const downloadURL = await getDownloadURL(storageRef);
+    return downloadURL;
+  } catch (error) {
+    console.error("Error generating and storing PDF:", error);
     throw error;
   }
 }; 

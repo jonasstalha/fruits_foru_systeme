@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Menu, X, Bell, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import Sidebar from "./sidebar";
 import { useLocation } from "wouter";
@@ -11,9 +12,14 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children }: MainLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
   const [location] = useLocation();
 
-  // Get page title based on current route
+  const logout = () => {
+    localStorage.removeItem("user");
+    window.location.href = "/login";
+  };
+
   const getPageTitle = () => {
     switch (location) {
       case "/":
@@ -41,7 +47,6 @@ export default function MainLayout({ children }: MainLayoutProps) {
     }
   };
 
-  // Get page subtitle based on current route
   const getPageSubtitle = () => {
     switch (location) {
       case "/new-entry":
@@ -95,21 +100,32 @@ export default function MainLayout({ children }: MainLayoutProps) {
               )}
             </div>
             <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" onClick={() => setShowAlert(!showAlert)}>
                 <Bell className="h-5 w-5" />
               </Button>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" onClick={logout}>
                 <User className="h-5 w-5" />
               </Button>
             </div>
           </div>
         </header>
 
+        {/* Alert Notification */}
+        {showAlert && (
+          <div className="px-4 md:px-6 mt-4">
+            <Alert>
+              <Bell className="h-4 w-4" />
+              <div>
+                <AlertTitle>Notifications</AlertTitle>
+                <AlertDescription>You have no new notifications.</AlertDescription>
+              </div>
+            </Alert>
+          </div>
+        )}
+
         {/* Page Content */}
-        <main className="p-4 md:p-6">
-          {children}
-        </main>
+        <main className="p-4 md:p-6">{children}</main>
       </div>
     </div>
   );
-} 
+}

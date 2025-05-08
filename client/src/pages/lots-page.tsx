@@ -124,8 +124,8 @@ export default function LotsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredLots.map((lot) => (
-            <Card key={lot.harvest.lotNumber} className="hover:shadow-lg transition-shadow">
+          {filteredLots.map((lot, index) => (
+            <Card key={`${lot.harvest.lotNumber}-${index}`} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <CardTitle className="text-xl">{lot.harvest.lotNumber}</CardTitle>
@@ -203,4 +203,4 @@ export default function LotsPage() {
       )}
     </div>
   );
-} 
+}

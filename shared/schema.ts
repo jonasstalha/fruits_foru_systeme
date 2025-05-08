@@ -30,12 +30,14 @@ export type User = z.infer<typeof userSchema>;
 
 // Farm related schemas
 export const farmSchema = z.object({
-  ...baseSchema,
   name: z.string().min(2).max(100),
   location: z.string().min(2).max(200),
   description: z.string().max(500).optional(),
   code: z.string().min(2).max(20),
   active: z.boolean().default(true),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  id: z.string().optional()
 });
 
 export const insertFarmSchema = farmSchema.omit({ id: true, createdAt: true, updatedAt: true });

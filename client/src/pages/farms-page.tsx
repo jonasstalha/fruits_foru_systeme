@@ -1,8 +1,21 @@
-import { useState } from "react";
+// Firebase configuration and initialization
+import { initializeApp } from "firebase/app";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  doc, 
+  updateDoc, 
+  deleteDoc,
+  serverTimestamp,
+  query,
+  orderBy
+} from "firebase/firestore";
+import { useState, useEffect } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -16,8 +29,7 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogTrigger,
-  DialogFooter,
-  DialogDescription
+  DialogFooter 
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -29,22 +41,51 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, MapPin, Edit2, Trash2, Loader2 } from "lucide-react";
-import { farmSchema, Farm as FarmType } from "@shared/schema";
-import { api, getFarms, addFarm, updateFarm, deleteFarm } from "@/lib/queryClient";
-import { toast } from "sonner";
+import { Plus, MapPin, Edit2, Trash2 } from "lucide-react";
+
+// Firebase configuration - replace with your config
+const firebaseConfig = {
+  apiKey: "AIzaSyC0bMWINNGLLS6bfnK-hfRQwHFnBSJqMhI",
+  authDomain: "fruitsforyou-10acc.firebaseapp.com",
+  projectId: "fruitsforyou-10acc",
+  storageBucket: "fruitsforyou-10acc.firebasestorage.app",
+  messagingSenderId: "774475210821",
+  appId: "1:774475210821:web:b70ceab6562385fa5f032c",
+  measurementId: "G-6EMQ9TRW9N"
+};
+
+// Initialize Firebase outside of the component
+// This prevents re-initialization on each render
+let firebaseApp;
+try {
+  firebaseApp = initializeApp(firebaseConfig);
+} catch (error) {
+  // Use existing app instance if it was already initialized
+  firebaseApp = initializeApp(firebaseConfig, "[DEFAULT]");
+}
+const db = getFirestore(firebaseApp);
+
+// Define farm schema
+const farmSchema = z.object({
+  name: z.string().min(1, "Le nom est requis"),
+  location: z.string().min(1, "La localisation est requise"),
+  description: z.string().optional(),
+  code: z.string().optional(),
+  active: z.boolean().default(true),
+});
+
+type Farm = z.infer<typeof farmSchema> & {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 const FarmsPage = () => {
-  const queryClient = useQueryClient();
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [openEditDialog, setOpenEditDialog] = useState(false);
-  const [selectedFarm, setSelectedFarm] = useState<FarmType | null>(null);
-  
-  // Fetch farms data
-  const { data: farms = [], isLoading } = useQuery({
-    queryKey: ['farms'],
-    queryFn: () => api.get<FarmType[]>('/api/farms')
-  });
+  const [selectedFarm, setSelectedFarm] = useState<Farm | null>(null);
+  const [farms, setFarms] = useState<Farm[]>([]);
+  const [loading, setLoading] = useState(true);
   
   // Add farm form
   const addFarmForm = useForm<z.infer<typeof farmSchema>>({
@@ -70,104 +111,115 @@ const FarmsPage = () => {
     },
   });
 
-  // Add farm mutation
-  const addFarmMutation = useMutation({
-    mutationFn: (data: Omit<FarmType, 'id' | 'createdAt' | 'updatedAt'>) => 
-      api.post<FarmType>('/api/farms', data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['farms'] });
-      toast.success("Ferme ajoutée avec succès");
-      addFarmForm.reset();
-      setOpenAddDialog(false);
-    },
-    onError: (error) => {
-      toast.error(`Erreur lors de l'ajout de la ferme: ${error.message}`);
-    }
-  });
+  // Fetch farms from Firebase on component mount
+  useEffect(() => {
+    fetchFarms();
+  }, []);
 
-  // Update farm mutation
-  const updateFarmMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string, data: Partial<FarmType> }) => 
-      api.put<FarmType>(`/api/farms/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['farms'] });
-      toast.success("Ferme mise à jour avec succès");
-      setOpenEditDialog(false);
-      setSelectedFarm(null);
-    },
-    onError: (error) => {
-      toast.error(`Erreur lors de la mise à jour de la ferme: ${error.message}`);
+  const fetchFarms = async () => {
+    try {
+      setLoading(true);
+      const farmsCollection = collection(db, "farms");
+      const farmQuery = query(farmsCollection, orderBy("createdAt", "desc"));
+      const querySnapshot = await getDocs(farmQuery);
+      
+      const farmsData: Farm[] = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name,
+          location: data.location,
+          description: data.description || "",
+          code: data.code || "",
+          active: data.active,
+          createdAt: data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+          updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : new Date().toISOString()
+        };
+      });
+      
+      setFarms(farmsData);
+    } catch (error) {
+      console.error("Error fetching farms:", error);
+    } finally {
+      setLoading(false);
     }
-  });
-
-  // Delete farm mutation
-  const deleteFarmMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/farms/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['farms'] });
-      toast.success("Ferme supprimée avec succès");
-    },
-    onError: (error) => {
-      toast.error(`Erreur lors de la suppression de la ferme: ${error.message}`);
-    }
-  });
-
-  const onAddFarmSubmit = (values: z.infer<typeof farmSchema>) => {
-    // Generate a code based on the farm name
-    const code = `F-${values.name.substring(0, 3).toUpperCase()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-    
-    // Create a new farm object with all required fields
-    const newFarm = {
-      name: values.name,
-      location: values.location,
-      description: values.description || "",
-      code: code,
-      active: values.active
-    };
-    
-    // Log the data being sent to help with debugging
-    console.log("Submitting farm data:", newFarm);
-    
-    // Submit the farm data
-    addFarmMutation.mutate(newFarm);
   };
 
-  const handleEditFarm = (farm: FarmType) => {
+  const onAddFarmSubmit = async (values: z.infer<typeof farmSchema>) => {
+    try {
+      // Generate farm code
+      const farmCode = `F-${String(farms.length + 1).padStart(3, '0')}`;
+      
+      // Add doc to Firebase
+      const docRef = await addDoc(collection(db, "farms"), {
+        ...values,
+        code: farmCode,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      
+      // Add the new farm to the local state
+      const newFarm: Farm = {
+        ...values,
+        id: docRef.id,
+        code: farmCode,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      setFarms(prevFarms => [newFarm, ...prevFarms]);
+      addFarmForm.reset();
+      setOpenAddDialog(false);
+    } catch (error) {
+      console.error("Error adding farm:", error);
+    }
+  };
+
+  const handleEditFarm = (farm: Farm) => {
     setSelectedFarm(farm);
     editFarmForm.reset({
       name: farm.name,
       location: farm.location,
-      description: farm.description || "",
+      description: farm.description,
       code: farm.code,
       active: farm.active
     });
     setOpenEditDialog(true);
   };
 
-  const onEditFarmSubmit = (values: z.infer<typeof farmSchema>) => {
+  const onEditFarmSubmit = async (values: z.infer<typeof farmSchema>) => {
     if (!selectedFarm) return;
     
-    // Create a new farm object with all required fields
-    const updatedFarm = {
-      name: values.name,
-      location: values.location,
-      description: values.description || "",
-      code: values.code,
-      active: values.active
-    };
-    
-    // Log the data being sent to help with debugging
-    console.log("Updating farm data:", updatedFarm);
-    
-    updateFarmMutation.mutate({
-      id: selectedFarm.id,
-      data: updatedFarm
-    });
+    try {
+      const farmRef = doc(db, "farms", selectedFarm.id);
+      await updateDoc(farmRef, {
+        ...values,
+        updatedAt: serverTimestamp()
+      });
+      
+      const updatedFarm: Farm = {
+        ...selectedFarm,
+        ...values,
+        updatedAt: new Date().toISOString()
+      };
+      
+      setFarms(farms.map(farm => 
+        farm.id === selectedFarm.id ? updatedFarm : farm
+      ));
+      
+      setOpenEditDialog(false);
+      setSelectedFarm(null);
+    } catch (error) {
+      console.error("Error updating farm:", error);
+    }
   };
 
-  const handleDeleteFarm = (farmId: string) => {
-    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette ferme ?")) {
-      deleteFarmMutation.mutate(farmId);
+  const handleDeleteFarm = async (farmId: string) => {
+    try {
+      await deleteDoc(doc(db, "farms", farmId));
+      setFarms(farms.filter(farm => farm.id !== farmId));
+    } catch (error) {
+      console.error("Error deleting farm:", error);
     }
   };
 
@@ -185,9 +237,6 @@ const FarmsPage = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Ajouter une ferme</DialogTitle>
-              <DialogDescription>
-                Remplissez les informations ci-dessous pour ajouter une nouvelle ferme.
-              </DialogDescription>
             </DialogHeader>
             <Form {...addFarmForm}>
               <form onSubmit={addFarmForm.handleSubmit(onAddFarmSubmit)} className="space-y-4">
@@ -248,18 +297,8 @@ const FarmsPage = () => {
                   )}
                 />
                 <DialogFooter>
-                  <Button 
-                    type="submit" 
-                    disabled={addFarmMutation.isPending}
-                  >
-                    {addFarmMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Création...
-                      </>
-                    ) : (
-                      "Créer"
-                    )}
+                  <Button type="submit">
+                    Créer
                   </Button>
                 </DialogFooter>
               </form>
@@ -268,64 +307,66 @@ const FarmsPage = () => {
         </Dialog>
       </div>
 
-      {isLoading ? (
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : farms.length === 0 ? (
-        <div className="text-center py-12 bg-neutral-50 rounded-lg">
-          <p className="text-neutral-500">Aucune ferme trouvée. Ajoutez votre première ferme.</p>
+      {loading ? (
+        <div className="flex justify-center p-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {farms.map((farm) => (
-            <Card key={farm.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-xl">{farm.name}</CardTitle>
-                  <div className="flex space-x-2">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="text-blue-500 hover:text-blue-700"
-                      onClick={() => handleEditFarm(farm)}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="text-red-500 hover:text-red-700"
-                      onClick={() => handleDeleteFarm(farm.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+          {farms.length > 0 ? (
+            farms.map((farm) => (
+              <Card key={farm.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <CardTitle className="text-xl">{farm.name}</CardTitle>
+                    <div className="flex space-x-2">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-blue-500 hover:text-blue-700"
+                        onClick={() => handleEditFarm(farm)}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => handleDeleteFarm(farm.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center text-sm text-neutral-500">
-                  <MapPin className="h-4 w-4 mr-1" />
-                  {farm.location}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-neutral-600">{farm.description}</p>
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-sm font-mono text-neutral-500">{farm.code}</span>
-                  <span className={`px-2 py-1 text-xs rounded-full ${
-                    farm.active 
-                      ? "bg-green-100 text-green-800" 
-                      : "bg-red-100 text-red-800"
-                  }`}>
-                    {farm.active ? "Active" : "Inactive"}
-                  </span>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between text-sm text-neutral-500">
-                <span>Créé le {new Date(farm.createdAt || new Date()).toLocaleDateString()}</span>
-                <span>Modifié le {new Date(farm.updatedAt || new Date()).toLocaleDateString()}</span>
-              </CardFooter>
-            </Card>
-          ))}
+                  <div className="flex items-center text-sm text-neutral-500">
+                    <MapPin className="h-4 w-4 mr-1" />
+                    {farm.location}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-neutral-600">{farm.description}</p>
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-sm font-mono text-neutral-500">{farm.code}</span>
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      farm.active 
+                        ? "bg-green-100 text-green-800" 
+                        : "bg-red-100 text-red-800"
+                    }`}>
+                      {farm.active ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between text-sm text-neutral-500">
+                  <span>Créé le {new Date(farm.createdAt).toLocaleDateString()}</span>
+                  <span>Modifié le {new Date(farm.updatedAt).toLocaleDateString()}</span>
+                </CardFooter>
+              </Card>
+            ))
+          ) : (
+            <div className="col-span-full text-center p-12 text-neutral-500">
+              Aucune ferme trouvée. Ajoutez une nouvelle ferme en cliquant sur le bouton ci-dessus.
+            </div>
+          )}
         </div>
       )}
 
@@ -334,9 +375,6 @@ const FarmsPage = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Modifier la ferme</DialogTitle>
-            <DialogDescription>
-              Modifiez les informations de la ferme ci-dessous.
-            </DialogDescription>
           </DialogHeader>
           <Form {...editFarmForm}>
             <form onSubmit={editFarmForm.handleSubmit(onEditFarmSubmit)} className="space-y-4">
@@ -386,7 +424,7 @@ const FarmsPage = () => {
                   <FormItem>
                     <FormLabel>Code</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input {...field} disabled />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -410,18 +448,8 @@ const FarmsPage = () => {
                 )}
               />
               <DialogFooter>
-                <Button 
-                  type="submit"
-                  disabled={updateFarmMutation.isPending}
-                >
-                  {updateFarmMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Enregistrement...
-                    </>
-                  ) : (
-                    "Enregistrer"
-                  )}
+                <Button type="submit">
+                  Enregistrer
                 </Button>
               </DialogFooter>
             </form>

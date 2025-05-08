@@ -352,18 +352,10 @@ export default function ScanPage() {
             <CardContent className="h-full">
               <PDFViewer 
                 lotId={scannedLot?.harvest.lotNumber || ''} 
+                lotData={scannedLot}
                 onClose={() => setShowPdfPreview(false)}
               />
             </CardContent>
-            <CardFooter className="flex justify-end gap-2">
-              <Button variant="outline" onClick={handleDownloadClick}>
-                <Download className="h-4 w-4 mr-2" />
-                Télécharger
-              </Button>
-              <Button variant="outline" onClick={() => setShowPdfPreview(false)}>
-                Fermer
-              </Button>
-            </CardFooter>
           </Card>
         </div>
       )}
