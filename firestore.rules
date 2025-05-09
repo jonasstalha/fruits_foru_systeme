@@ -189,6 +189,12 @@ service cloud.firestore {
       allow update: if isAuthenticated() && request.resource.data.lotNumber is string;
       allow delete: if isAuthenticated();
     }
+    
+    // Inventory collection
+    match /inventory/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+    }
   }
 }
 
@@ -220,4 +226,4 @@ service firebase.storage {
       allow read, write: if isAuthenticated() && request.resource.size < 20 * 1024 * 1024;
     }
   }
-} 
+}

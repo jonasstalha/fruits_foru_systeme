@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState ,useEffect} from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,23 @@ import { api, addAvocadoTracking } from "@/lib/queryClient";
 import { AvocadoTracking, AvocadoVariety, QualityGrade } from "@shared/schema";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../lib/firebase"; // adjust path as needed
+
+
 
 export default function NewEntryPage() {
+  const [farms, setFarms] = useState([]);
+
+useEffect(() => {
+  const fetchFarms = async () => {
+    const farmsSnapshot = await getDocs(collection(db, "farms"));
+    const farmsData = farmsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setFarms(farmsData);
+  };
+  fetchFarms();
+}, []);
+
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
@@ -258,17 +273,23 @@ export default function NewEntryPage() {
                   required
                 />
               </div>
-      
-              <div className="space-y-2">
-                <Label htmlFor="farmLocation">Localisation de la ferme</Label>
-                <Input
-                  id="farmLocation"
-                  value={formData.harvest?.farmLocation}
-                  onChange={(e) => handleChange("harvest", "farmLocation", e.target.value)}
-                  required
-                />
-              </div>
-      
+                <div className="space-y-2">
+                  <label htmlFor="selectedFarm">🌾 Sélectionnez une ferme</label>
+                  <select
+                    id="selectedFarm"
+                    value={formData.selectedFarm || ""}
+                    onChange={(e) => setFormData({ ...formData, selectedFarm: e.target.value })}
+                    className="w-full p-2 border rounded"
+                  >
+                    <option value="">-- Choisir une ferme --</option>
+                    {farms.map((farm) =>  (
+                      <option key={farm.id} value={farm.id}>
+                        {farm.name} - {farm.location}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
               <div className="space-y-2">
                 <Label htmlFor="farmerId">ID Agriculteur</Label>
                 <Input
@@ -440,109 +461,158 @@ export default function NewEntryPage() {
             </CardContent>
           </Card>
         );
-
-        case 4:
-          const packages = Array.isArray(formData.packaging) ? formData.packaging : [];
         
+        
+        case 4:
           return (
             <Card>
               <CardHeader>
                 <CardTitle>📦 Emballage</CardTitle>
-                <CardDescription>Gérez les différents lots d'emballage.</CardDescription>
+                <CardDescription>
+                  Remplissez les informations détaillées sur l'emballage, les calibres, le poids, et l'équipe.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {packages.map((pkg, index) => (
-                  <div key={index} className="border p-4 rounded-md space-y-4">
-                    <h3 className="font-medium">Lot #{index + 1}</h3>
-        
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor={`boxId-${index}`}>🔢 ID de la boîte</Label>
-                        <Input
-                          id={`boxId-${index}`}
-                          value={pkg.boxId || ""}
-                          onChange={(e) =>
-                            handlePackageChange(index, "boxId", e.target.value)
-                          }
-                          placeholder="Ex: BX2024-0987"
+
+                {/* 📅 Date */}
+                <div className="space-y-2">
+                  <Label htmlFor="packagingDate">📅 Date de l'emballage</Label>
+                  <Input
+                    id="packagingDate"
+                    type="date"
+                    value={formData.packagingDate || ""}
+                    onChange={(e) => setFormData({ ...formData, packagingDate: e.target.value })}
+                    className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* 🧰 ID de boîte */}
+                <div className="space-y-2">
+                  <Label htmlFor="boxId">🔢 ID de la boîte</Label>
+                  <Input
+                    id="boxId"
+                    value={formData.boxId || ""}
+                    onChange={(e) => setFormData({ ...formData, boxId: e.target.value })}
+                    placeholder="Ex: BX2024-0987"
+                    className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* 📦 Type(s) de boîte */}
+                <div className="space-y-2">
+                  <Label>📦 Type(s) d'emballage</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {['caisse', 'boite', 'palette', 'sac', 'autre'].map((type) => (
+                      <label key={type} className="flex items-center space-x-2 bg-gray-100 rounded p-2 hover:bg-gray-200 transition">
+                        <input
+                          type="checkbox"
+                          checked={formData.boxTypes?.includes(type) || false}
+                          onChange={(e) => {
+                            const newTypes = e.target.checked
+                              ? [...(formData.boxTypes || []), type]
+                              : (formData.boxTypes || []).filter((t) => t !== type);
+                            setFormData({ ...formData, boxTypes: newTypes });
+                          }}
+                          className="focus:ring-blue-500 focus:border-blue-500"
                         />
-                      </div>
-        
-                      <div className="space-y-2">
-                        <Label htmlFor={`boxType-${index}`}>📦 Type de boîte</Label>
-                        <Select
-                          value={pkg.boxType || ""}
-                          onValueChange={(value) =>
-                            handlePackageChange(index, "boxType", value)
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="caisse">Caisse en bois</SelectItem>
-                            <SelectItem value="boite">Boîte carton</SelectItem>
-                            <SelectItem value="palette">Palette</SelectItem>
-                            <SelectItem value="sac">Sac plastique</SelectItem>
-                            <SelectItem value="autre">Autre</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-        
-                      <div className="space-y-2">
-                        <Label htmlFor={`avocadoCount-${index}`}>🥑 Nombre d'avocats</Label>
-                        <Select
-                          value={pkg.avocadoCount?.toString() || ""}
-                          onValueChange={(value) =>
-                            handlePackageChange(index, "avocadoCount", parseInt(value))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30].map((count) => (
-                              <SelectItem key={count} value={count.toString()}>
-                                {count} avocat{count > 1 ? "s" : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-        
-                      <div className="space-y-2">
-                        <Label htmlFor={`netWeight-${index}`}>⚖️ Poids net (kg)</Label>
-                        <Input
-                          id={`netWeight-${index}`}
-                          type="number"
-                          step="0.1"
-                          min="0.1"
-                          value={pkg.netWeight || ""}
-                          onChange={(e) =>
-                            handlePackageChange(index, "netWeight", parseFloat(e.target.value))
-                          }
-                        />
-                      </div>
-                    </div>
-        
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removePackage(index)}
-                      className="text-red-500"
-                    >
-                      ❌ Supprimer ce lot
-                    </Button>
+                        <span className="capitalize">{type}</span>
+                      </label>
+                    ))}
                   </div>
-                ))}
-        
-                <Button variant="secondary" onClick={addNewPackage}>
-                  ➕ Ajouter un lot d'emballage
-                </Button>
+                </div>
+
+                {/* 🥑 Calibres */}
+                <div className="space-y-2">
+                  <Label>🥑 Calibre(s) des avocats</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {[...Array(10)].map((_, i) => {
+                      const caliber = 12 + i * 2;
+                      return (
+                        <label key={caliber} className="flex items-center space-x-2 bg-green-50 rounded p-2 hover:bg-green-100 transition">
+                          <input
+                            type="checkbox"
+                            checked={formData.calibers?.includes(caliber) || false}
+                            onChange={(e) => {
+                              const newCalibers = e.target.checked
+                                ? [...(formData.calibers || []), caliber]
+                                : (formData.calibers || []).filter((c) => c !== caliber);
+                              setFormData({ ...formData, calibers: newCalibers });
+                            }}
+                            className="focus:ring-green-500 focus:border-green-500"
+                          />
+                          <span>{caliber}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ⚖️ Poids net */}
+                <div className="space-y-2">
+                  <Label>⚖️ Poids net</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {['4kg', '10kg', 'autre'].map((type) => (
+                      <label key={type} className="flex items-center space-x-2 bg-gray-100 rounded p-2 hover:bg-gray-200 transition">
+                        <input
+                          type="checkbox"
+                          checked={formData.boxTypes?.includes(type) || false}
+                          onChange={(e) => {
+                            const newTypes = e.target.checked
+                              ? [...(formData.boxTypes || []), type]
+                              : (formData.boxTypes || []).filter((t) => t !== type);
+                            setFormData({ ...formData, boxTypes: newTypes });
+                          }}
+                          className="focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <span className="capitalize">{type}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 🥑 Nombre d'avocats */}
+                <div className="space-y-2">
+                  <Label htmlFor="avocadoCount">🥑 Nombre total d'avocats (facultatif)</Label>
+                  <Input
+                    id="avocadoCount"
+                    type="number"
+                    min="1"
+                    value={formData.avocadoCount || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, avocadoCount: parseInt(e.target.value) })
+                    }
+                    placeholder="Ex: 150"
+                    className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                {/* 👷 Groupe des travailleurs */}
+                <div className="space-y-2">
+                  <Label htmlFor="workers">👷‍♂️ Équipe de travail</Label>
+                  <div className="flex flex-wrap gap-3">
+                    {['morning group', 'evening group', 'autre'].map((type) => (
+                      <label key={type} className="flex items-center space-x-2 bg-gray-100 rounded p-2 hover:bg-gray-200 transition">
+                        <input
+                          type="checkbox"
+                          checked={formData.boxTypes?.includes(type) || false}
+                          onChange={(e) => {
+                            const newTypes = e.target.checked
+                              ? [...(formData.boxTypes || []), type]
+                              : (formData.boxTypes || []).filter((t) => t !== type);
+                            setFormData({ ...formData, boxTypes: newTypes });
+                          }}
+                          className="focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <span className="capitalize">{type}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
               </CardContent>
             </Card>
           );
-
+        
       case 5:
         return (
           <Card>

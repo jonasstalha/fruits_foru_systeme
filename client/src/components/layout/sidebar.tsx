@@ -53,10 +53,11 @@ export default function Sidebar() {
 
   const renderSection = (title: string, items: any[], sectionKey: string) => (
     <div>
-      <div
-        className="mt-6 py-2 px-4 text-xs text-neutral-500 uppercase flex items-center cursor-pointer hover:bg-neutral-700 rounded-md transition-all duration-300 ease-in-out"
-        onMouseEnter={() => toggleSection(sectionKey)}
-      >
+<div
+  className="mt-6 py-2 px-4 text-xs text-neutral-500 uppercase flex items-center cursor-pointer hover:bg-neutral-700 rounded-md transition-all duration-300 ease-in-out"
+  onMouseEnter={() => toggleSection(sectionKey)}
+  onMouseLeave={() => toggleSection(null)} // Or another function like closeSection()
+>
         {expandedSections.includes(sectionKey) ? (
           <ChevronDown className="h-4 w-4 mr-2" />
         ) : (

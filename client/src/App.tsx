@@ -21,6 +21,7 @@ import facturestemplates from "./pages/logistique/factures-templates";
 import inventory from "./pages/logistique/inventory";
 import qualitycontrol from "./pages/quality/qualitycontrol";
 import personnelmanagement from "./pages/personnele/personnelmanagement";
+import calculedeconsomation from "./pages/production/calculedeconsomation";
 function AuthenticatedRoutes() {
   return (
     <MainLayout>
@@ -41,6 +42,7 @@ function AuthenticatedRoutes() {
         <Route path="/inventory" component={inventory} />
         <Route path="/qualitycontrol" component={qualitycontrol} />
         <Route path="/personnelmanagement" component={personnelmanagement} />
+        <Route path="/calculedeconsomation" component={calculedeconsomation} />
         <Route component={NotFound} />
       </Switch>
     </MainLayout>
