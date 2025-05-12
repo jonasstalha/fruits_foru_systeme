@@ -474,4 +474,43 @@ export const generateAndStorePDF = async (lotId: string): Promise<string> => {
     console.error("Error generating and storing PDF:", error);
     throw error;
   }
-}; 
+};
+
+// Add a function to create a new archive box in Firestore
+export const createArchiveBox = async (title: string, color: string, icon: string, userId: string): Promise<string> => {
+  if (!userId) {
+    throw new Error('User ID is required to create a box.');
+  }
+
+  const docRef = await addDoc(collection(db, 'boxes'), {
+    title,
+    color,
+    icon,
+    userId,
+    createdAt: serverTimestamp(),
+  });
+  return docRef.id;
+};
+
+// Add a function to add an item to an archive box
+export const addItemToBox = async (boxId: string, itemName: string, type: string, file: File | undefined, userId: string): Promise<string> => {
+  if (!userId) {
+    throw new Error('User ID is required to add an item to a box.');
+  }
+
+  let fileUrl = '';
+  if (file) {
+    const storageRef = ref(storage, `boxes/${boxId}/${file.name}`);
+    await uploadBytes(storageRef, file);
+    fileUrl = await getDownloadURL(storageRef);
+  }
+
+  const docRef = await addDoc(collection(db, `boxes/${boxId}/blocks`), {
+    name: itemName,
+    type,
+    fileUrl,
+    userId,
+    createdAt: serverTimestamp(),
+  });
+  return docRef.id;
+};

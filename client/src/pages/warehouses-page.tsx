@@ -12,6 +12,7 @@ import {
   query,
   orderBy
 } from "firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth"; // Import Firebase Auth
 import { useState, useEffect } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -65,6 +66,9 @@ try {
 }
 const db = getFirestore(firebaseApp);
 
+// Initialize Firebase Auth
+const auth = getAuth(firebaseApp);
+
 // Define warehouse schema
 const warehouseSchema = z.object({
   name: z.string().min(1, "Le nom est requis"),
@@ -112,19 +116,22 @@ const WarehousesPage = () => {
     },
   });
 
-  // Fetch warehouses from Firebase on component mount
-  useEffect(() => {
-    fetchWarehouses();
-  }, []);
-
   const fetchWarehouses = async () => {
     try {
       setLoading(true);
+
+      // Ensure the user is authenticated
+      const user = auth.currentUser;
+      if (!user) {
+        console.error("User is not authenticated");
+        return;
+      }
+
       const warehousesCollection = collection(db, "entrepots");
       const warehouseQuery = query(warehousesCollection, orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(warehouseQuery);
-      
-      const warehousesData: Warehouse[] = querySnapshot.docs.map(doc => {
+
+      const warehousesData: Warehouse[] = querySnapshot.docs.map((doc) => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -135,10 +142,10 @@ const WarehousesPage = () => {
           code: data.code || "",
           active: data.active,
           createdAt: data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
-          updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : new Date().toISOString()
+          updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
         };
       });
-      
+
       setWarehouses(warehousesData);
     } catch (error) {
       console.error("Error fetching warehouses:", error);
@@ -146,6 +153,19 @@ const WarehousesPage = () => {
       setLoading(false);
     }
   };
+
+  // Ensure the user is authenticated before fetching data
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        fetchWarehouses();
+      } else {
+        console.error("User is not authenticated");
+      }
+    });
+
+    return () => unsubscribe(); // Cleanup subscription on unmount
+  }, []);
 
   const onAddWarehouseSubmit = async (values: z.infer<typeof warehouseSchema>) => {
     try {

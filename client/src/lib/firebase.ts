@@ -18,8 +18,11 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
-const db = getFirestore(app);
+const firestore = getFirestore(app);
 const auth = getAuth(app);
 const storage = getStorage(app);
 
-export { app, analytics, db, auth, storage }; 
+export { app, analytics, firestore, auth, storage };
+
+// Re-export 'firestore' as 'db' for backward compatibility
+export { firestore as db };

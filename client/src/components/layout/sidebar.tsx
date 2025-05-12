@@ -55,16 +55,15 @@ export default function Sidebar() {
     <div>
 <div
   className="mt-6 py-2 px-4 text-xs text-neutral-500 uppercase flex items-center cursor-pointer hover:bg-neutral-700 rounded-md transition-all duration-300 ease-in-out"
-  onMouseEnter={() => toggleSection(sectionKey)}
-  onMouseLeave={() => toggleSection(null)} // Or another function like closeSection()
+  onClick={() => toggleSection(sectionKey)} // Changed to onClick for toggling
 >
-        {expandedSections.includes(sectionKey) ? (
-          <ChevronDown className="h-4 w-4 mr-2" />
-        ) : (
-          <ChevronRight className="h-4 w-4 mr-2" />
-        )}
-        {isSidebarOpen && <span>{title}</span>}
-      </div>
+  {expandedSections.includes(sectionKey) ? (
+    <ChevronDown className="h-4 w-4 mr-2" />
+  ) : (
+    <ChevronRight className="h-4 w-4 mr-2" />
+  )}
+  {isSidebarOpen && <span>{title}</span>}
+</div>
       {expandedSections.includes(sectionKey) && (
         <ul>
           {items.map((item, index) => (
@@ -166,6 +165,10 @@ export default function Sidebar() {
       title: "Inventaire",
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
       path: "/inventory",
+    }, {
+      title: "Archife",
+      icon: <ClipboardList className="h-5 w-5 mr-2" />,
+      path: "/history",
     },
   ];
 
@@ -181,6 +184,11 @@ export default function Sidebar() {
       title: "Réception",
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
       path: "/reception",
+    },
+        {
+      title: "new entry ",
+      icon: <ClipboardList className="h-5 w-5 mr-2" />,
+      path: "/new",
     },
   ];
   const personnelItems = [
@@ -225,7 +233,7 @@ export default function Sidebar() {
         <div className="p-4 border-b border-neutral-700 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Leaf className="h-6 w-6 text-green-400" />
-            {isSidebarOpen && <h1 className="font-bold text-xl">Convo Bio</h1>}
+            {isSidebarOpen && <h1 className="font-bold text-xl">Fruits For You</h1>}
           </div>
           <button
             onClick={toggleSidebar}

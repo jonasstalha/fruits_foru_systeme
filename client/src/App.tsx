@@ -22,6 +22,10 @@ import inventory from "./pages/logistique/inventory";
 import qualitycontrol from "./pages/quality/qualitycontrol";
 import personnelmanagement from "./pages/personnele/personnelmanagement";
 import calculedeconsomation from "./pages/production/calculedeconsomation";
+import history from "./pages/logistique/history";
+import reception from "./pages/recaption/reception";
+import newEntry from "./pages/recaption/newentry";
+
 function AuthenticatedRoutes() {
   return (
     <MainLayout>
@@ -43,6 +47,9 @@ function AuthenticatedRoutes() {
         <Route path="/qualitycontrol" component={qualitycontrol} />
         <Route path="/personnelmanagement" component={personnelmanagement} />
         <Route path="/calculedeconsomation" component={calculedeconsomation} />
+        <Route path="/history" component={history} />
+           <Route path="/reception" component={reception} />
+        <Route path="/new" component={newEntry} />
         <Route component={NotFound} />
       </Switch>
     </MainLayout>
