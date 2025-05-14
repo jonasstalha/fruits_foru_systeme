@@ -1,0 +1,843 @@
+import { useState, useEffect } from 'react';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale/fr';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import { FilePlus, Printer, RefreshCw, Check } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
+
+// Add logo import
+const LOGO_PATH = new URL('../../../assets/logo.png', import.meta.url).href;
+
+// Function to convert image to base64
+const getBase64Image = async (url: string): Promise<string> => {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
+// Define row type
+interface ExpeditionRow {
+  palletNo: number;
+  nbrColis: string;
+  produitVariete: string;
+  calibre: string;
+  temperatureProduit: string;
+  etatPalette: string;
+  conformiteEtiquettes: string;
+  dessiccation: string;
+}
+
+// Add new form data interface
+interface HeaderData {
+  date: string;
+  heure: string;
+  transporteur: string;
+  matricule: string;
+  tempCamion: string;
+  hygiene: 'Bon' | 'Mauvais' | '';
+  odeur: 'Bon' | 'Mauvais' | '';
+  destination: string;
+  thermokingEtat: 'Bon' | 'Mauvais' | '';
+}
+
+// Product varieties options
+const productVarieties = ['Hass', 'Fuerte', 'Pinkerton', 'Reed', 'Zutano', 'Bacon', 'Gwen', 'Lamb Hass'];
+
+// Define dropdown options
+const etatPaletteOptions = ['Bonne', 'Moyenne', 'Mauvaise'];
+const conformiteOptions = ['C', 'NC']; // C = Conforme, NC = Non Conforme
+
+// Initial empty row structure
+const createEmptyRow = (index: number): ExpeditionRow => ({
+  palletNo: index + 1,
+  nbrColis: '',
+  produitVariete: '',
+  calibre: '',
+  temperatureProduit: '',
+  etatPalette: '',
+  conformiteEtiquettes: '',
+  dessiccation: ''
+});
+
+export default function FichedExpidition() {
+  const [rows, setRows] = useState<ExpeditionRow[]>([]);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [userId] = useState('USER123'); // Mock user ID
+  const [companyName] = useState('Fruits For You ');
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [expeditionDate, setExpeditionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [clientName, setClientName] = useState('');
+  const [headerData, setHeaderData] = useState<HeaderData>({
+    date: format(new Date(), 'yyyy-MM-dd'),
+    heure: format(new Date(), 'HH:mm'),
+    transporteur: '',
+    matricule: '',
+    tempCamion: '',
+    hygiene: '',
+    odeur: '',
+    destination: '',
+    thermokingEtat: ''
+  });
+
+  // Initialize rows on component mount
+  useEffect(() => {
+    const savedData = localStorage.getItem('ficheExpeditionData');
+    if (savedData) {
+      try {
+        setRows(JSON.parse(savedData));
+      } catch (e) {
+        initializeEmptyRows();
+      }
+    } else {
+      initializeEmptyRows();
+    }
+  }, []);
+
+  // Auto-save to localStorage when rows change
+  useEffect(() => {
+    if (rows.length > 0) {
+      localStorage.setItem('ficheExpeditionData', JSON.stringify(rows));
+    }
+  }, [rows]);
+
+  const initializeEmptyRows = () => {
+    const emptyRows = Array(26).fill(null).map((_, index) => createEmptyRow(index));
+    setRows(emptyRows);
+  };
+
+  // Handle input changes
+  const handleChange = (rowIndex: number, field: keyof ExpeditionRow, value: string) => {
+    const updatedRows = [...rows];
+    updatedRows[rowIndex] = { 
+      ...updatedRows[rowIndex], 
+      [field]: value
+    };
+    setRows(updatedRows);
+  };
+
+  // Add header data change handler
+  const handleHeaderChange = (field: keyof HeaderData, value: string) => {
+    setHeaderData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Simple validation to check if there's at least one row with data
+  const validateForm = () => {
+    const hasAnyData = rows.some(row => 
+      row.nbrColis || row.produitVariete || row.calibre || 
+      row.temperatureProduit || row.etatPalette || 
+      row.conformiteEtiquettes || row.dessiccation
+    );
+    
+    if (!hasAnyData) {
+      alert("Veuillez remplir au moins une ligne avant de générer le PDF.");
+      return false;
+    }
+    
+    return true;
+  };
+
+  const generatePDF = async () => {
+    if (!validateForm()) return;
+
+    setIsGeneratingPDF(true);
+    try {
+      const doc = new jsPDF();
+      const logoBase64 = await getBase64Image(LOGO_PATH);
+      
+      // Set up page and colors
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      const lightGreen: [number, number, number] = [198, 224, 180];
+      const darkGreen: [number, number, number] = [76, 175, 80];
+      const gray: [number, number, number] = [75, 75, 75];
+
+      // Helper function to apply color arrays
+      const applyColor = (color: [number, number, number]) => {
+        return color[0] + ',' + color[1] + ',' + color[2];  // Returns "R,G,B" format
+      };
+      
+      // Add page border with rounded corners
+      doc.setDrawColor(darkGreen[0], darkGreen[1], darkGreen[2]);
+      doc.setLineWidth(1);
+      doc.roundedRect(5, 5, pageWidth - 10, pageHeight - 10, 3, 3);
+      
+    // Add logo with simplified positioning and size
+    doc.addImage(logoBase64, 'PNG', 10, 10, 25, 25);
+
+    // Add header title section with minimal styling
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Fiche d\'expédition', 40, 20);
+
+    // Add right section with MP ENR info in a simple box
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text('MP ENR 06', 160, 15);
+    doc.text('Version : 01', 160, 20);
+    doc.text('Date : 01/07/2023', 160, 25);
+
+    // Add a simple line separator
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.5);
+    doc.line(10, 40, pageWidth - 10, 40);
+      
+      // Create the main form sections with improved spacing
+      const startY = 55;
+      doc.setFontSize(9);
+      
+      // First row of fields with enhanced styling
+      // Date field
+      doc.setFillColor(250, 250, 250);
+      doc.roundedRect(10, startY, 35, 15, 2, 2, 'F');
+      doc.roundedRect(10, startY, 35, 15, 2, 2);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(darkGreen[0], darkGreen[1], darkGreen[2]);
+      doc.text('Date expédition :', 12, startY + 5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(gray[0], gray[1], gray[2]);
+      doc.text(headerData.date || '', 12, startY + 11);
+      
+      // Hour field with similar styling
+      doc.setFillColor(250, 250, 250);
+      doc.roundedRect(45, startY, 25, 15, 2, 2, 'F');
+      doc.roundedRect(45, startY, 25, 15, 2, 2);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(darkGreen[0], darkGreen[1], darkGreen[2]);
+      doc.text('Heure:', 47, startY + 5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(gray[0], gray[1], gray[2]);
+      doc.text(headerData.heure || '', 47, startY + 11);
+      
+      // Transporter field with enhanced styling
+      doc.setFillColor(250, 250, 250);
+      doc.roundedRect(70, startY, 45, 15, 2, 2, 'F');
+      doc.roundedRect(70, startY, 45, 15, 2, 2);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(darkGreen[0], darkGreen[1], darkGreen[2]);
+      doc.text('Nom du', 72, startY + 5);
+      doc.text('transporteur :', 72, startY + 9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(gray[0], gray[1], gray[2]);
+      doc.text(headerData.transporteur || '', 72, startY + 13);
+      
+      // Registration field with enhanced styling
+      doc.setFillColor(250, 250, 250);
+      doc.roundedRect(115, startY, 45, 15, 2, 2, 'F');
+      doc.roundedRect(115, startY, 45, 15, 2, 2);
+      doc.text('Matricule', 117, startY + 5);
+      doc.text('camion :', 117, startY + 9);
+      doc.text(headerData.matricule || '', 117, startY + 13);
+      
+      doc.rect(160, startY, 40, 15); // Temperature field
+      doc.text('T° camion :', 162, startY + 5);
+      doc.text(`${headerData.tempCamion || ''}°C`, 162, startY + 11);
+      
+      // Second row - Checkboxes section
+      const checkY = startY + 15;
+      const checkboxSize = 3;
+      
+      // Hygiene section
+      doc.rect(10, checkY, 60, 15);
+      doc.text('Hygiène du camion :', 12, checkY + 7);
+      
+      // Draw checkboxes for Hygiene
+      doc.rect(45, checkY + 4, checkboxSize, checkboxSize);
+      doc.text('Bon', 50, checkY + 6.5);
+      doc.rect(45, checkY + 9, checkboxSize, checkboxSize);
+      doc.text('Mauvais', 50, checkY + 11.5);
+      
+      if (headerData.hygiene === 'Bon') {
+        doc.line(45, checkY + 4, 48, checkY + 7);
+        doc.line(48, checkY + 4, 45, checkY + 7);
+      }
+      if (headerData.hygiene === 'Mauvais') {
+        doc.line(45, checkY + 9, 48, checkY + 12);
+        doc.line(48, checkY + 9, 45, checkY + 12);
+      }
+      
+      // Odeur section
+      doc.rect(70, checkY, 45, 15);
+      doc.text('Odeur :', 72, checkY + 7);
+      
+      // Draw checkboxes for Odeur
+      doc.rect(90, checkY + 4, checkboxSize, checkboxSize);
+      doc.text('Bon', 95, checkY + 6.5);
+      doc.rect(90, checkY + 9, checkboxSize, checkboxSize);
+      doc.text('Mauvais', 95, checkY + 11.5);
+      
+      if (headerData.odeur === 'Bon') {
+        doc.line(90, checkY + 4, 93, checkY + 7);
+        doc.line(93, checkY + 4, 90, checkY + 7);
+      }
+      if (headerData.odeur === 'Mauvais') {
+        doc.line(90, checkY + 9, 93, checkY + 12);
+        doc.line(93, checkY + 9, 90, checkY + 12);
+      }
+      
+      // Destination
+      doc.rect(115, checkY, 45, 15);
+      doc.text('Nom client :', 117, checkY + 5);
+      doc.text(clientName || '', 117, checkY + 11);
+      
+      doc.rect(160, checkY, 40, 15);
+      doc.text('Destination :', 162, checkY + 5);
+      doc.text(headerData.destination || '', 162, checkY + 11);
+      
+      // Thermo king status
+      doc.rect(10, checkY + 15, 190, 15);
+      doc.text('État de fonctionnement du', 12, checkY + 22);
+      doc.text('thermo king :', 12, checkY + 26);
+      
+      // Draw checkboxes for Thermo King
+      doc.rect(70, checkY + 21, checkboxSize, checkboxSize);
+      doc.text('Bon', 75, checkY + 23.5);
+      doc.rect(90, checkY + 21, checkboxSize, checkboxSize);
+      doc.text('Mauvais', 95, checkY + 23.5);
+      
+      if (headerData.thermokingEtat === 'Bon') {
+        doc.line(70, checkY + 21, 73, checkY + 24);
+        doc.line(73, checkY + 21, 70, checkY + 24);
+      }
+      if (headerData.thermokingEtat === 'Mauvais') {
+        doc.line(90, checkY + 21, 93, checkY + 24);
+        doc.line(93, checkY + 21, 90, checkY + 24);
+      }
+      
+      // Data table with enhanced styling
+      const tableY = checkY + 35;
+      
+      // Add a decorative separator before the table
+      doc.setDrawColor(darkGreen[0], darkGreen[1], darkGreen[2]);
+      doc.setLineWidth(0.5);
+      doc.setLineDash([3, 3]);
+      doc.line(10, tableY - 5, pageWidth - 10, tableY - 5);
+      doc.setLineDash([]);
+      
+      const filteredRows = rows.filter(row => 
+        row.nbrColis || row.produitVariete || row.calibre || 
+        row.temperatureProduit || row.etatPalette || 
+        row.conformiteEtiquettes || row.dessiccation
+      );
+        // Apply enhanced table styling
+      (doc as any).autoTable({
+        startY: tableY,
+        margin: { left: 10, right: 10 },        head: [[
+          { content: 'N° de\npalette', styles: { cellWidth: 20, cellPadding: 4 } },
+          { content: 'NBR de\nColis', styles: { cellWidth: 20, cellPadding: 4 } },
+          { content: 'Produit/\nVariété', styles: { cellWidth: 30, cellPadding: 4 } },
+          { content: 'Calibre', styles: { cellWidth: 20, cellPadding: 4 } },
+          { content: 'T° produit', styles: { cellWidth: 20, cellPadding: 4 } },
+          { content: 'État de la palette', styles: { cellWidth: 25, cellPadding: 4 } },
+          { content: 'Conformité d\'étiquettes\n(C/NC)', styles: { cellWidth: 30, cellPadding: 4 } },
+          { content: 'Décision\n(C/NC)', styles: { cellWidth: 25, cellPadding: 4 } }
+        ]],
+        body: filteredRows.map((row, index) => [
+          { content: index + 1, styles: { halign: 'center' } },
+          { content: row.nbrColis, styles: { halign: 'center' } },
+          { content: row.produitVariete, styles: { halign: 'left' } },
+          { content: row.calibre, styles: { halign: 'center' } },
+          { content: row.temperatureProduit ? `${row.temperatureProduit}°C` : '', styles: { halign: 'center' } },
+          { content: row.etatPalette, styles: { halign: 'center' } },
+          { content: row.conformiteEtiquettes, styles: { halign: 'center' } },
+          { content: row.dessiccation, styles: { halign: 'center' } }
+        ]),        styles: {
+          fontSize: 9,
+          cellPadding: { top: 4, right: 3, bottom: 4, left: 3 },
+          lineWidth: 0.1,
+          lineColor: [0, 0, 0],
+          textColor: [0, 0, 0],
+          minCellHeight: 15,
+          valign: 'middle',
+          overflow: 'linebreak'
+        },
+        headStyles: {
+          fillColor: [...lightGreen],
+          textColor: [0, 0, 0],
+          fontSize: 9,
+          fontStyle: 'bold',
+          halign: 'center',
+          valign: 'middle',
+          cellPadding: { top: 5, right: 3, bottom: 5, left: 3 },
+          minCellHeight: 20
+        },
+        columnStyles: {
+          0: { fillColor: [...lightGreen], halign: 'center', fontStyle: 'bold' }
+        },
+        alternateRowStyles: {
+          fillColor: [255, 255, 255]
+        },
+        rowStyles: {
+          0: { fillColor: lightGreen },  // First row green
+          1: { fillColor: lightGreen },  // Second row green
+          2: { fillColor: lightGreen }   // Third row green
+        },
+        theme: 'grid'
+      });
+      
+      // Add signature section with enhanced styling
+      const finalY = (doc as any).lastAutoTable.finalY + 25;
+      
+      // Add signature boxes
+      doc.setDrawColor(darkGreen[0], darkGreen[1], darkGreen[2]);
+      doc.setFillColor(250, 250, 250);
+      
+      // Left signature box
+      doc.roundedRect(10, finalY, 85, 40, 2, 2, 'F');
+      doc.roundedRect(10, finalY, 85, 40, 2, 2);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(darkGreen[0], darkGreen[1], darkGreen[2]);
+      doc.text('Visa de Responsable de chargement', 15, finalY + 7);
+      doc.setLineWidth(0.1);
+      doc.line(15, finalY + 30, 90, finalY + 30);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text('Signature et cachet', 15, finalY + 37);
+      
+      // Right signature box
+      doc.roundedRect(pageWidth - 95, finalY, 85, 40, 2, 2, 'F');
+      doc.roundedRect(pageWidth - 95, finalY, 85, 40, 2, 2);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.text('Visa de Responsable Qualité', pageWidth - 90, finalY + 7);
+      doc.line(pageWidth - 90, finalY + 30, pageWidth - 15, finalY + 30);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text('Signature et cachet', pageWidth - 90, finalY + 37);
+      
+      // Add footer
+      const footerY = pageHeight - 15;
+      doc.setFontSize(8);
+      doc.setTextColor(gray[0], gray[1], gray[2]);
+      doc.text(companyName, 10, footerY);
+      doc.text(`Document généré le ${format(new Date(), 'dd/MM/yyyy à HH:mm')}`, pageWidth/2, footerY, { align: 'center' });
+      doc.text(`Page 1/1`, pageWidth - 20, footerY, { align: 'right' });
+      
+      // Save with formatted name
+      const pdfName = `Fiche_Expedition_${format(new Date(), 'yyyyMMdd')}_${headerData.transporteur.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+      doc.save(pdfName);
+      
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+      
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Une erreur s'est produite lors de la génération du PDF.");
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  return (
+    <div className="bg-gradient-to-b from-gray-50 to-white min-h-screen p-4 md:p-6">
+      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-xl p-6">
+        {/* Enhanced Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 pb-6 border-b border-gray-200">
+          <div className="space-y-4 w-full md:w-auto">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-green-50 rounded-lg">
+                <FilePlus className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-800">Fiche d'Expédition</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  {format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}
+                </p>
+              </div>
+            </div>
+
+            {/* Form Grid with Enhanced Styling */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-4xl mt-6">
+              {/* Date and Time Group */}
+              <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date d'Expédition
+                  </label>
+                  <input
+                    type="date"
+                    value={headerData.date}
+                    onChange={(e) => handleHeaderChange('date', e.target.value)}
+                    className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Heure
+                  </label>
+                  <input
+                    type="time"
+                    value={headerData.heure}
+                    onChange={(e) => handleHeaderChange('heure', e.target.value)}
+                    className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Transport Info Group */}
+              <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nom du Transporteur
+                  </label>
+                  <input
+                    type="text"
+                    value={headerData.transporteur}
+                    onChange={(e) => handleHeaderChange('transporteur', e.target.value)}
+                    placeholder="Entrer le nom du transporteur"
+                    className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Matricule Camion
+                  </label>
+                  <input
+                    type="text"
+                    value={headerData.matricule}
+                    onChange={(e) => handleHeaderChange('matricule', e.target.value)}
+                    placeholder="Entrer le matricule du camion"
+                    className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Temperature and Status Group */}
+              <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Température Camion
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={headerData.tempCamion}
+                      onChange={(e) => handleHeaderChange('tempCamion', e.target.value)}
+                      placeholder="Température"
+                      className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all pr-12"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">°C</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Destination
+                  </label>
+                  <input
+                    type="text"
+                    value={headerData.destination}
+                    onChange={(e) => handleHeaderChange('destination', e.target.value)}
+                    placeholder="Entrer la destination"
+                    className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Status Checkboxes - Full Width */}
+              <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Hygiène
+                  </label>
+                  <div className="flex items-center space-x-4">
+                    <label className="inline-flex items-center">
+                      <input
+                        type="radio"
+                        value="Bon"
+                        checked={headerData.hygiene === 'Bon'}
+                        onChange={(e) => handleHeaderChange('hygiene', e.target.value)}
+                        className="form-radio text-green-600 focus:ring-green-500 h-4 w-4"
+                      />
+                      <span className="ml-2">Bon</span>
+                    </label>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="radio"
+                        value="Mauvais"
+                        checked={headerData.hygiene === 'Mauvais'}
+                        onChange={(e) => handleHeaderChange('hygiene', e.target.value)}
+                        className="form-radio text-red-600 focus:ring-red-500 h-4 w-4"
+                      />
+                      <span className="ml-2">Mauvais</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Odeur
+                  </label>
+                  <div className="flex items-center space-x-4">
+                    <label className="inline-flex items-center">
+                      <input
+                        type="radio"
+                        value="Bon"
+                        checked={headerData.odeur === 'Bon'}
+                        onChange={(e) => handleHeaderChange('odeur', e.target.value)}
+                        className="form-radio text-green-600 focus:ring-green-500 h-4 w-4"
+                      />
+                      <span className="ml-2">Bon</span>
+                    </label>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="radio"
+                        value="Mauvais"
+                        checked={headerData.odeur === 'Mauvais'}
+                        onChange={(e) => handleHeaderChange('odeur', e.target.value)}
+                        className="form-radio text-red-600 focus:ring-red-500 h-4 w-4"
+                      />
+                      <span className="ml-2">Mauvais</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    État Thermo King
+                  </label>
+                  <div className="flex items-center space-x-4">
+                    <label className="inline-flex items-center">
+                      <input
+                        type="radio"
+                        value="Bon"
+                        checked={headerData.thermokingEtat === 'Bon'}
+                        onChange={(e) => handleHeaderChange('thermokingEtat', e.target.value)}
+                        className="form-radio text-green-600 focus:ring-green-500 h-4 w-4"
+                      />
+                      <span className="ml-2">Bon</span>
+                    </label>
+                    <label className="inline-flex items-center">
+                      <input
+                        type="radio"
+                        value="Mauvais"
+                        checked={headerData.thermokingEtat === 'Mauvais'}
+                        onChange={(e) => handleHeaderChange('thermokingEtat', e.target.value)}
+                        className="form-radio text-red-600 focus:ring-red-500 h-4 w-4"
+                      />
+                      <span className="ml-2">Mauvais</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Action Buttons with Enhanced Styling */}
+          <div className="flex flex-col gap-3 mt-6 md:mt-0">
+            <button
+              onClick={generatePDF}
+              disabled={isGeneratingPDF}
+              className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-all transform hover:scale-105 disabled:bg-gray-400 disabled:transform-none shadow-lg hover:shadow-xl"
+            >
+              {isGeneratingPDF ? (
+                <>
+                  <div className="animate-spin h-5 w-5 border-3 border-white border-t-transparent rounded-full"></div>
+                  Génération...
+                </>
+              ) : (
+                <>
+                  <FilePlus size={20} />
+                  Générer PDF
+                </>
+              )}
+            </button>
+            
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+            >
+              <Printer size={20} />
+              Imprimer
+            </button>
+            
+            <button
+              onClick={() => {
+                if (window.confirm("Êtes-vous sûr de vouloir réinitialiser le formulaire? Toutes les données seront perdues.")) {
+                  initializeEmptyRows();
+                }
+              }}
+              className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+            >
+              <RefreshCw size={20} />
+              Réinitialiser
+            </button>
+          </div>
+        </div>
+        
+        {showSuccessMessage && (
+          <div className="mb-6 bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-r-lg animate-fade-in flex items-center">
+            <div className="bg-green-100 rounded-full p-1 mr-3">
+              <Check className="h-5 w-5 text-green-600" />
+            </div>
+            <span>Fiche d'expédition générée avec succès!</span>
+          </div>
+        )}
+        
+        {/* Enhanced Table Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">
+                    N° Palette
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">
+                    Nbr Colis
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">
+                    Produit/Variété
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">
+                    Calibre
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">
+                    Température
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">
+                    État Palette
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider border-r">
+                    Conf. Étiquettes
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Dessiccation
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {rows.map((row, rowIndex) => (
+                  <tr key={rowIndex} 
+                      className={`group hover:bg-green-50 transition-colors ${
+                        rowIndex % 2 === 0 ? 'bg-gray-50' : 'bg-white'
+                      }`}>
+                    <td className="px-4 py-3 border-r whitespace-nowrap text-sm font-medium text-gray-900">
+                      {row.palletNo}
+                    </td>
+                    
+                    <td className="px-4 py-3 border-r">
+                      <input
+                        type="number"
+                        value={row.nbrColis}
+                        onChange={(e) => handleChange(rowIndex, 'nbrColis', e.target.value)}
+                        className="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                        min="0"
+                      />
+                    </td>
+                    
+                    <td className="px-4 py-3 border-r">
+                      <select
+                        value={row.produitVariete}
+                        onChange={(e) => handleChange(rowIndex, 'produitVariete', e.target.value)}
+                        className="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all appearance-none bg-white"
+                      >
+                        <option value="">Sélectionner</option>
+                        {productVarieties.map((variety) => (
+                          <option key={variety} value={variety}>{variety}</option>
+                        ))}
+                      </select>
+                    </td>
+                    
+                    <td className="px-4 py-3 border-r">
+                      <input
+                        type="text"
+                        value={row.calibre}
+                        onChange={(e) => handleChange(rowIndex, 'calibre', e.target.value)}
+                        placeholder="ex: 14-16"
+                        className="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                      />
+                    </td>
+                    
+                    <td className="px-4 py-3 border-r">
+                      <div className="relative">
+                        <input
+                          type="number"
+                          value={row.temperatureProduit}
+                          onChange={(e) => handleChange(rowIndex, 'temperatureProduit', e.target.value)}
+                          step="0.1"
+                          className="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all pr-12"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">°C</span>
+                      </div>
+                    </td>
+                    
+                    <td className="px-4 py-3 border-r">
+                      <select
+                        value={row.etatPalette}
+                        onChange={(e) => handleChange(rowIndex, 'etatPalette', e.target.value)}
+                        className="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all appearance-none bg-white"
+                      >
+                        <option value="">Sélectionner</option>
+                        {etatPaletteOptions.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </td>
+                    
+                    <td className="px-4 py-3 border-r">
+                      <select
+                        value={row.conformiteEtiquettes}
+                        onChange={(e) => handleChange(rowIndex, 'conformiteEtiquettes', e.target.value)}
+                        className="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all appearance-none bg-white"
+                      >
+                        <option value="">Sélectionner</option>
+                        {conformiteOptions.map((option) => (
+                          <option key={option} value={option} className={
+                            option === 'C' ? 'text-green-600' : 'text-red-600'
+                          }>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    
+                    <td className="px-4 py-3">
+                      <select
+                        value={row.dessiccation}
+                        onChange={(e) => handleChange(rowIndex, 'dessiccation', e.target.value)}
+                        className="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all appearance-none bg-white"
+                      >
+                        <option value="">Sélectionner</option>
+                        {conformiteOptions.map((option) => (
+                          <option key={option} value={option} className={
+                            option === 'C' ? 'text-green-600' : 'text-red-600'
+                          }>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        
+        {/* Enhanced Footer */}
+        <div className="mt-6 flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-gray-500">
+            <RefreshCw className="h-4 w-4" />
+            <span className="text-sm">Sauvegarde automatique activée</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+              {rows.filter(r => r.nbrColis || r.produitVariete).length} palettes
+            </div>
+            <span className="text-sm text-gray-500">avec données</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

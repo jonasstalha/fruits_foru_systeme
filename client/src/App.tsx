@@ -25,6 +25,11 @@ import calculedeconsomation from "./pages/production/calculedeconsomation";
 import history from "./pages/logistique/history";
 import reception from "./pages/recaption/reception";
 import newEntry from "./pages/recaption/newentry";
+import Horaires from "./pages/personnele/Horaires";
+import historiquedeconsomation from "./pages/production/historiquedeconsomation";
+import Archivagedesfacture from "@/pages/comptability/Archivagedesfacture"
+import templatest from "@/pages/comptability/templatest";
+import FichedExpidition from "@/pages/logistique/FichedExpidition";
 
 function AuthenticatedRoutes() {
   return (
@@ -39,7 +44,7 @@ function AuthenticatedRoutes() {
         <Route path="/users" component={UsersPage} />
         <Route path="/warehouses" component={WarehousesPage} />
         <Route path="/reports" component={ReportsPage} />
-        <Route path="/statistics" component={StatisticsPage} />
+        {/* <Route path="/statistics" component={StatisticsPage} /> */}
         <Route path="/rapport-generating" component={RapportGenerating} />
         <Route path="/factures-templates" component={facturestemplates} />
         <Route path="/traceability" component={StatisticsPage} />
@@ -48,8 +53,13 @@ function AuthenticatedRoutes() {
         <Route path="/personnelmanagement" component={personnelmanagement} />
         <Route path="/calculedeconsomation" component={calculedeconsomation} />
         <Route path="/history" component={history} />
-           <Route path="/reception" component={reception} />
+        <Route path="/reception" component={reception} />
         <Route path="/new" component={newEntry} />
+        <Route path="/schedules" component={Horaires} />
+        <Route path="/historiquedeconsomation" component={historiquedeconsomation} />
+        <Route path="/Archivagedesfacture" component={Archivagedesfacture} />
+        <Route path="/Templates" component={templatest} />
+        <Route path="/fichedexpidition" component={FichedExpidition} />
         <Route component={NotFound} />
       </Switch>
     </MainLayout>

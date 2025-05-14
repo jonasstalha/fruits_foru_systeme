@@ -620,7 +620,7 @@ const ArchiveSystem: React.FC = () => {
       )}
       
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Archivage</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Archivage logistiqe</h1>
       </div>
       
       <div className="bg-white rounded-xl shadow-sm p-6 mb-8 border">

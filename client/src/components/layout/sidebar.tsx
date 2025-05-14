@@ -23,6 +23,8 @@ import {
   ClipboardList,
   UserCog,
   Calendar,
+  LayoutTemplate ,
+  ArchiveRestore ,
   ShieldCheck,
   ChevronLeft,
 } from "lucide-react";
@@ -114,18 +116,18 @@ export default function Sidebar() {
     },
   ];
 
-  const traceabilityItems = [
-    {
-      title: "Rapports PDF",
-      icon: <FileText className="h-5 w-5 mr-2" />,
-      path: "/reports",
-    },
-    {
-      title: "Statistiques",
-      icon: <BarChart3 className="h-5 w-5 mr-2" />,
-      path: "/statistics",
-    },
-  ];
+  // const traceabilityItems = [
+  //   {
+  //     title: "Rapports PDF",
+  //     icon: <FileText className="h-5 w-5 mr-2" />,
+  //     path: "/reports",
+  //   },
+  //   // {
+  //   //   title: "Statistiques",
+  //   //   icon: <BarChart3 className="h-5 w-5 mr-2" />,
+  //   //   path: "/statistics",
+  //   // },
+  // ];
 
   const adminItems = [
     {
@@ -165,7 +167,13 @@ export default function Sidebar() {
       title: "Inventaire",
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
       path: "/inventory",
-    }, {
+    }, 
+     {
+      title: "Fiche d Expidition",
+      icon: <ClipboardList className="h-5 w-5 mr-2" />,
+      path: "/fichedexpidition",
+    },
+    {
       title: "Archife",
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
       path: "/history",
@@ -177,7 +185,18 @@ export default function Sidebar() {
       title: "Contrôle Qualité",
       icon: <ShieldCheck className="h-5 w-5 mr-2" />,
       path: "/qualitycontrol",
-    }
+    },
+    ,
+        {
+      title: "Rapport qualité",
+      icon: <FileBarChart className="h-5 w-5 mr-2" />,
+      path: "/Rapportqualité",
+    },
+        {
+      title: "Archivage des controles",
+      icon: <ArchiveRestore className="h-5 w-5 mr-2" />,
+      path: "/Archivagedescontroles",
+    },
   ];
   const ReceptionItems = [
     {
@@ -210,14 +229,21 @@ export default function Sidebar() {
       path: "/calculedeconsomation",
     },
     {
-      title: "historique de consomation ",
+      title: "invtory tracking ",
       icon: <History className="h-5 w-5 mr-2" />,
       path: "/historiquedeconsomation",
     },
+  ];
+   const Comptabilité = [
     {
-      title: "invtory tracking",
-      icon: <Layers className="h-5 w-5 mr-2" />,
-      path: "/invtorytracking",
+      title: "Templates",
+      icon: <LayoutTemplate className="h-5 w-5 mr-2" />,
+      path: "/Templates",
+    },
+    {
+      title: "Archivage des facture  ",
+      icon: <ArchiveRestore className="h-5 w-5 mr-2" />,
+      path: "/Archivagedesfacture",
     },
   ];
 
@@ -246,13 +272,15 @@ export default function Sidebar() {
         {/* Navigation */}
         <nav className="p-2 flex-grow overflow-y-auto">
           {renderSection("Menu Principal", menuItems, "menu")}
-          {renderSection("Traçabilité", traceabilityItems, "traceability")}
+          {/* {renderSection("Traçabilité", traceabilityItems, "traceability")} */}
           {renderSection("Administration", adminItems, "admin")}
           {renderSection("Logistique", logisticsItems, "logistics")}
           {renderSection("Qualité", quality, "quality")}
           {renderSection("Réception", ReceptionItems, "reception")}
           {renderSection("Production", production, "production")}
           {renderSection("Personnel", personnelItems, "personnel")}
+          {renderSection("Comptabilité", Comptabilité, "Comptabilité")}
+          
         </nav>
 
         {/* Bottom Section with Version and Info */}
