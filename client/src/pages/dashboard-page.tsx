@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import StatusCards from "@/components/dashboard/status-cards";
 import FilterBar from "@/components/dashboard/filter-bar";
 import LotTable from "@/components/dashboard/lot-table";
 import { Plus, QrCode } from "lucide-react";
@@ -19,7 +18,17 @@ const DEFAULT_FILTERS: FilterState = {
 
 export default function DashboardPage() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-  
+  const [showSections, setShowSections] = useState(true); // State to toggle sections
+  const [showDataBoxes, setShowDataBoxes] = useState(true); // State to toggle visibility
+
+  const toggleSections = () => {
+    setShowSections((prev) => !prev);
+  };
+
+  const toggleDataBoxes = () => {
+    setShowDataBoxes((prev) => !prev);
+  };
+
   // Fetch farms data
   const { data: farms = [], isLoading: isLoadingFarms } = useQuery({
     queryKey: ['farms'],
@@ -34,11 +43,11 @@ export default function DashboardPage() {
     refetchOnMount: true
   });
   
-  // Convert avocado tracking data to lots format for the table
+  // Ensure all required variables are defined
   const lots: Lot[] = avocadoTrackingData.map((tracking, index) => ({
-    id: index + 1,
+    id: (index + 1).toString(), // Convert id to string
     lotNumber: tracking.harvest.lotNumber,
-    farmId: 1, // Default to first farm, since we don't have farmId in tracking data
+    farmId: "1", // Default to first farm as a string
     harvestDate: tracking.harvest.harvestDate,
     initialQuantity: 1000, // Default value
     currentStatus: "shipped", // Default value
@@ -58,33 +67,33 @@ export default function DashboardPage() {
     setFilters(prev => ({ ...prev, ...newFilters }));
   };
   
-  // Apply filters to lots
+  // Complete the code block for filtering lots
   const filteredLots = lots.filter(lot => {
     // Filter by search term
     if (filters.search && !lot.lotNumber.toLowerCase().includes(filters.search.toLowerCase())) {
       return false;
     }
-    
+
     // Filter by farm
-    if (filters.farmId !== 'all' && lot.farmId !== parseInt(filters.farmId)) {
+    if (filters.farmId !== 'all' && lot.farmId !== filters.farmId) { // Compare as strings
       return false;
     }
-    
+
     // Filter by status
     if (filters.status !== 'all' && lot.currentStatus !== filters.status) {
       return false;
     }
-    
+
     // Filter by date
     if (filters.date) {
       const harvestDate = new Date(lot.harvestDate);
       const filterDate = new Date(filters.date);
-      
+
       if (harvestDate.toDateString() !== filterDate.toDateString()) {
         return false;
       }
     }
-    
+
     return true;
   });
   
@@ -96,33 +105,36 @@ export default function DashboardPage() {
   
   return (
     <div className="p-4 md:p-6 space-y-6">
-      {/* Status Cards Section */}
-      <section>
-        <StatusCards 
-          stats={stats} 
-          isLoading={isLoadingStats} 
-        />
-      </section>
-      
-      {/* Filter Bar Section */}
-      <section>
-        <FilterBar 
-          filters={filters} 
-          onFilterChange={handleFilterChange} 
-          farms={farms} 
-          isLoading={isLoadingFarms} 
-        />
-      </section>
-      
-      {/* Lots Table Section */}
-      <section>
-        <LotTable 
-          lots={filteredLots} 
-          isLoading={isLoadingAvocadoTracking} 
-          farms={farms} 
-        />
-      </section>
-      
+      <button
+        onClick={toggleDataBoxes}
+        className="mb-4 px-4 py-2 bg-blue-500 text-white rounded"
+      >
+        {showDataBoxes ? "Hide Data Boxes" : "Show Data Boxes"}
+      </button>
+
+      {showDataBoxes && (
+        <>
+          {/* Filter Bar Section */}
+          <section>
+            <FilterBar 
+              filters={filters} 
+              onFilterChange={handleFilterChange} 
+              farms={farms} 
+              isLoading={isLoadingFarms} 
+            />
+          </section>
+
+          {/* Lots Table Section */}
+          <section>
+            <LotTable 
+              lots={filteredLots} 
+              isLoading={isLoadingAvocadoTracking} 
+              farms={farms} 
+            />
+          </section>
+        </>
+      )}
+
       {/* Action Buttons */}
       {canCreateEntries && (
         <div className="fixed bottom-6 right-6 flex flex-col space-y-3">

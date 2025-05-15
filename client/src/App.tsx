@@ -30,7 +30,6 @@ import historiquedeconsomation from "./pages/production/historiquedeconsomation"
 import Archivagedesfacture from "@/pages/comptability/Archivagedesfacture"
 import templatest from "@/pages/comptability/templatest";
 import FichedExpidition from "@/pages/logistique/FichedExpidition";
-
 function AuthenticatedRoutes() {
   return (
     <MainLayout>
