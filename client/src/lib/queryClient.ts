@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
-import { Farm, Lot, AvocadoTracking, StatsData } from "@shared/schema";
+import { Farm, Lot, StatsData } from "@shared/schema";
+import { AvocadoTracking } from "@shared/types/avocado-tracking";
 import * as firebaseService from "./firebaseService";
 
 // Create a query client with default options
@@ -29,7 +30,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   try {
     console.log(`API Request: ${method} ${endpoint}`, data ? `with data: ${JSON.stringify(data)}` : '');
-    
+
     // Use Firebase service instead of mock API
     switch (method) {
       case "GET":
@@ -63,7 +64,7 @@ export async function apiRequest<T>(
           throw new Error("PDF generation is not implemented in Firebase yet");
         }
         throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
-      
+
       case "POST":
         if (endpoint === "/api/avocado-tracking") {
           return await firebaseService.addAvocadoTracking(data);
@@ -78,7 +79,7 @@ export async function apiRequest<T>(
           return await firebaseService.addLot(data);
         }
         throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
-      
+
       case "PUT":
         if (endpoint.startsWith("/api/farms/")) {
           const id = endpoint.split("/").pop();
@@ -95,7 +96,7 @@ export async function apiRequest<T>(
           return await firebaseService.updateLot(id, data);
         }
         throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
-      
+
       case "DELETE":
         if (endpoint.startsWith("/api/farms/")) {
           const id = endpoint.split("/").pop();
@@ -114,7 +115,7 @@ export async function apiRequest<T>(
           return null;
         }
         throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
-      
+
       default:
         throw new Error(`Method ${method} not implemented in Firebase service`);
     }

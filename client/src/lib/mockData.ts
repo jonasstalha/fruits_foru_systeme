@@ -1,4 +1,5 @@
-import { AvocadoTracking, Farm, Lot, StatsData } from "@shared/schema";
+import { AvocadoTracking } from "@shared/types/avocado-tracking";
+import { Farm, Lot, StatsData } from "@shared/schema";
 
 // Mock data for avocado tracking
 export let mockAvocadoTrackingData: AvocadoTracking[] = [
@@ -206,24 +207,24 @@ export const mockApi = {
   },
   addFarm: (data: Omit<Farm, 'id' | 'createdAt' | 'updatedAt'>) => {
     console.log("Mock API: Adding farm with data:", data);
-    
+
     // Validate required fields
     if (!data.name || !data.location || !data.code) {
       console.error("Mock API: Missing required fields", data);
       return Promise.reject(new Error("Missing required fields: name, location, and code are required"));
     }
-    
+
     const newFarm: Farm = {
       ...data,
       id: `farm${mockFarms.length + 1}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    
+
     console.log("Mock API: Created new farm:", newFarm);
     mockFarms.push(newFarm);
     console.log("Mock API: Updated farms array, new length:", mockFarms.length);
-    
+
     return Promise.resolve(newFarm);
   },
   addLot: (data: Omit<Lot, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -283,7 +284,7 @@ export const mockApi = {
     if (!lotId) {
       return Promise.reject(new Error("Lot ID is required for PDF generation"));
     }
-    
+
     const lotNumber = typeof lotId === 'number' ? `LOT-${lotId}` : lotId;
     const lot = mockAvocadoTrackingData.find(lot => lot.harvest.lotNumber === lotNumber);
     if (!lot) {
@@ -347,7 +348,7 @@ export const mockApi = {
         </body>
       </html>
     `;
-    
+
     // In a real implementation, this would generate a PDF from the HTML
     // For now, we'll just return a mock Blob
     return Promise.resolve(new Blob([htmlContent], { type: 'text/html' }));

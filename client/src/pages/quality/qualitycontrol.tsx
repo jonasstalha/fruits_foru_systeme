@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Save, FileText, AlertTriangle, Check, X } from 'lucide-react';
 import { jsPDF } from "jspdf"; // Import jsPDF for PDF generation
 
@@ -32,6 +32,7 @@ interface PaletteData {
   netWeight: string;
   internalLotNumber: string;
   paletteConformity: string;
+  requiredNetWeight: string;
 }
 
 interface FormData {
@@ -45,8 +46,18 @@ interface FormData {
   category: string;
   exporterNumber: string;
   frequency: string;
-  requiredNetWeight: string;
   palettes: PaletteData[];
+  tolerance?: {
+    minCharacteristic?: string;
+    category1Defects?: string;
+    category2Defects?: string;
+    category3Defects?: string;
+    category4Defects?: string;
+    minCharacteristicConform?: boolean;
+    category1DefectsConform?: boolean;
+    category2DefectsConform?: boolean;
+    category3DefectsConform?: boolean;
+  };
 }
 
 const emptyPaletteData = (): PaletteData => ({
@@ -76,7 +87,8 @@ const emptyPaletteData = (): PaletteData => ({
   grossWeight: '',
   netWeight: '',
   internalLotNumber: '',
-  paletteConformity: ''
+  paletteConformity: '',
+  requiredNetWeight: ''
 });
 
 const initializeFormData = (): FormData => ({
@@ -90,7 +102,6 @@ const initializeFormData = (): FormData => ({
   category: 'I',
   exporterNumber: '106040',
   frequency: '1 Carton/palette',
-  requiredNetWeight: '',
   palettes: Array(5).fill(null).map(() => emptyPaletteData())
 });
 
@@ -132,14 +143,30 @@ export default function ProductQualityControlForm() {
     calculateResults();
   }, [formData]);
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData({ ...formData, [field]: value });
+  const handleInputChange = (field: string, value: string | boolean) => {
+    const keys = field.split('.');
+    if (keys.length === 2) {
+      setFormData((prevData) => ({
+        ...prevData,
+        tolerance: {
+          ...prevData.tolerance,
+          [keys[1]]: value
+        }
+      }));
+    } else {
+      setFormData({ ...formData, [field]: value });
+    }
   };
 
-  const handlePaletteChange = (paletteIndex: number, field: keyof PaletteData, value: string) => {
-    const newPalettes = [...formData.palettes];
-    newPalettes[paletteIndex] = { ...newPalettes[paletteIndex], [field]: value };
-    setFormData({ ...formData, palettes: newPalettes });
+  const handlePaletteChange = (rowIndex: number, field: string, value: string) => {
+    setFormData((prevData) => {
+      const updatedPalettes = [...prevData.palettes];
+      if (!updatedPalettes[rowIndex]) {
+        updatedPalettes[rowIndex] = {} as PaletteData;
+      }
+      updatedPalettes[rowIndex][field] = value;
+      return { ...prevData, palettes: updatedPalettes };
+    });
   };
 
   const calculateResults = () => {
@@ -178,8 +205,8 @@ export default function ProductQualityControlForm() {
         totalMissingGrains += parseFloat(palette.missingBrokenGrains || '0');
         
         // Weight conformity
-        if (palette.packageWeight && formData.requiredNetWeight) {
-          const requiredWeight = parseFloat(formData.requiredNetWeight);
+        if (palette.packageWeight && palette.requiredNetWeight) {
+          const requiredWeight = parseFloat(palette.requiredNetWeight);
           const actualWeight = parseFloat(palette.packageWeight);
           const weightConformity = (actualWeight - requiredWeight) / requiredWeight * 100;
           totalWeightConformity += weightConformity;
@@ -220,11 +247,9 @@ export default function ProductQualityControlForm() {
     console.log(results);
   };
 
-  const calculateAverages = (field: keyof PaletteData): string => {
-    const values = formData.palettes.map(p => parseFloat(p[field] as string) || 0);
-    if (values.length === 0) return '0';
-    const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
-    return avg.toFixed(2);
+  const calculateAverages = (field: string): string => {
+    const total = formData.palettes.reduce((sum, palette) => sum + (parseFloat(palette[field] as string) || 0), 0);
+    return (total / formData.palettes.length).toFixed(2);
   };
 
   const handleGenerateReport = () => {
@@ -273,10 +298,12 @@ export default function ProductQualityControlForm() {
 
   const tabTitles = [
     "Basic Info",
-    "Minimum Characteristics",
-    "Category Parameters",
-    "Palette Details",
-    "Results"
+    "Controle poids",
+    "Controle des Caracteristiques minimales",
+    "Controle des parametres categorie I",
+    "Controle produit fini",
+    "Tolerance",
+    "Results",
   ];
 
   return (
@@ -291,7 +318,7 @@ export default function ProductQualityControlForm() {
           {/* Add a button to generate and download the PDF */}
           <button
             onClick={handleGenerateReport}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition mb-6"
           >
             Download Report as PDF
           </button>
@@ -439,193 +466,25 @@ export default function ProductQualityControlForm() {
                     </div>
                   </div>
                 </div>
-                
-                <div className="md:col-span-2">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Required Net Weight (kg)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.requiredNetWeight}
-                      onChange={(e) => handleInputChange('requiredNetWeight', e.target.value)}
-                      className="w-32 px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                </div>
               </div>
             )}
             
-            {/* Minimum Characteristics Tab */}
+            {/* Controle poids Tab */}
             {activeTab === 1 && (
               <div className="overflow-x-auto">
                 <table className="min-w-full bg-white border-collapse">
                   <thead>
                     <tr className="bg-gray-100">
-                      <th className="py-2 px-3 border sticky left-0 bg-gray-100 z-10">Parameter</th>
+                      <th className="py-2 px-3 border sticky left-0 bg-gray-100 z-10">Paramètre</th>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
                       ))}
-                      <th className="py-2 px-3 border">Average</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Phase 1: Already Correct */}
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Firmness (kgf) [13-14]</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.missingBrokenGrains || ''}
-                            onChange={(e) => handlePaletteChange(i, 'missingBrokenGrains', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('missingBrokenGrains')}</td>
-                    </tr>
-
-                    {/* Phase 2: Contrôle Poids */}
-                    {Array.from({ length: Math.min(paletteCount, 27) }).map((_, rowIndex) => (
-                      <tr key={rowIndex}>
-                        <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Row {rowIndex + 1}</td>
-                        {Array.from({ length: 4 }).map((_, colIndex) => (
-                          <td key={colIndex} className="py-1 px-2 border">
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              value={formData.palettes[rowIndex]?.[`weightCol${colIndex}`] || ''}
-                              onChange={(e) => handlePaletteChange(rowIndex, `weightCol${colIndex}`, e.target.value)}
-                              className="w-full p-1 border border-gray-200 rounded text-center"
-                            />
-                          </td>
-                        ))}
-                        <td className="py-2 px-3 border font-medium">{calculateAverages(`weightCol${rowIndex}`)}</td>
-                      </tr>
-                    ))}
-
-                    {/* Phase 3: Contrôle des Caractéristiques */}
-                    {Array.from({ length: Math.min(paletteCount, 27) }).map((_, rowIndex) => (
-                      <tr key={rowIndex}>
-                        <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Row {rowIndex + 1}</td>
-                        {Array.from({ length: 10 }).map((_, colIndex) => (
-                          <td key={colIndex} className="py-1 px-2 border">
-                            <input
-                              type="text"
-                              value={formData.palettes[rowIndex]?.[`characteristicCol${colIndex}`] || ''}
-                              onChange={(e) => handlePaletteChange(rowIndex, `characteristicCol${colIndex}`, e.target.value)}
-                              className="w-full p-1 border border-gray-200 rounded text-center"
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-
-                    {/* Phase 4: Contrôle des Paramètres */}
-                    {Array.from({ length: Math.min(paletteCount, 27) }).map((_, rowIndex) => (
-                      <tr key={rowIndex}>
-                        <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Row {rowIndex + 1}</td>
-                        {Array.from({ length: 7 }).map((_, colIndex) => (
-                          <td key={colIndex} className="py-1 px-2 border">
-                            <input
-                              type="text"
-                              value={formData.palettes[rowIndex]?.[`parameterCol${colIndex}`] || ''}
-                              onChange={(e) => handlePaletteChange(rowIndex, `parameterCol${colIndex}`, e.target.value)}
-                              className="w-full p-1 border border-gray-200 rounded text-center"
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-
-                    {/* Phase 5: Contrôle Produit Fini */}
-                    {Array.from({ length: Math.min(paletteCount, 27) }).map((_, rowIndex) => (
-                      <tr key={rowIndex}>
-                        <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Row {rowIndex + 1}</td>
-                        {Array.from({ length: 13 }).map((_, colIndex) => (
-                          <td key={colIndex} className="py-1 px-2 border">
-                            <input
-                              type="text"
-                              value={formData.palettes[rowIndex]?.[`finishedProductCol${colIndex}`] || ''}
-                              onChange={(e) => handlePaletteChange(rowIndex, `finishedProductCol${colIndex}`, e.target.value)}
-                              className="w-full p-1 border border-gray-200 rounded text-center"
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-
-                    {/* Phase 6: Tolerance Table */}
-                    {Array.from({ length: Math.min(paletteCount, 27) }).map((_, rowIndex) => (
-                      <tr key={rowIndex}>
-                        <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Row {rowIndex + 1}</td>
-                        {Array.from({ length: 5 }).map((_, colIndex) => (
-                          <td key={colIndex} className="py-1 px-2 border">
-                            <input
-                              type="text"
-                              value={formData.palettes[rowIndex]?.[`toleranceCol${colIndex}`] || ''}
-                              onChange={(e) => handlePaletteChange(rowIndex, `toleranceCol${colIndex}`, e.target.value)}
-                              className="w-full p-1 border border-gray-200 rounded text-center"
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            
-            {/* Palette Details Tab */}
-            {activeTab === 3 && (
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="py-2 px-3 border sticky left-0 bg-gray-100 z-10">Parameter</th>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
-                      ))}
+                      <th className="py-2 px-3 border">Moyenne</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Package Count</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            min="0"
-                            value={formData.palettes[i]?.packageCount || ''}
-                            onChange={(e) => handlePaletteChange(i, 'packageCount', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Packaging State</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <select
-                            value={formData.palettes[i]?.packagingState || ''}
-                            onChange={(e) => handlePaletteChange(i, 'packagingState', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          >
-                            <option value="">Select</option>
-                            <option value="C">C</option>
-                            <option value="NC">NC</option>
-                          </select>
-                        </td>
-                      ))}
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Labeling Presence</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Poids du colis (kg)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -640,79 +499,56 @@ export default function ProductQualityControlForm() {
                       ))}
                       <td className="py-2 px-3 border font-medium">{calculateAverages('packageWeight')}</td>
                     </tr>
-                    
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Shape Defect (%)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Poids net requis (kg)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
                             type="number"
-                            step="0.1"
+                            step="0.01"
                             min="0"
-                            value={formData.palettes[i]?.shapeDefect || ''}
-                            onChange={(e) => handlePaletteChange(i, 'shapeDefect', e.target.value)}
+                            value={formData.palettes[i]?.requiredNetWeight || ''}
+                            onChange={(e) => handlePaletteChange(i, 'requiredNetWeight', e.target.value)}
                             className="w-full p-1 border border-gray-200 rounded text-center"
                           />
                         </td>
                       ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('shapeDefect')}</td>
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('requiredNetWeight')}</td>
                     </tr>
-                    
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Color Defect (sunburn) (%)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Poids net (%)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.colorDefect || ''}
-                            onChange={(e) => handlePaletteChange(i, 'colorDefect', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
+                        <td key={i} className="py-1 px-2 border text-center">
+                          {formData.palettes[i]?.packageWeight && formData.palettes[i]?.requiredNetWeight
+                            ? (((Number(formData.palettes[i].packageWeight) - Number(formData.palettes[i].requiredNetWeight)) * 100) / Number(formData.palettes[i].packageWeight)).toFixed(2)
+                            : ''}
                         </td>
                       ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('colorDefect')}</td>
+                      <td className="py-2 px-3 border font-medium">
+                        {calculateAverages('netWeightPercentage')}
+                      </td>
                     </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Epidermis Defect (%)</td>
+                  </tbody>
+                </table>
+              </div>
+            )}
+            
+            {/* Controle des Caracteristiques minimales Tab */}
+            {activeTab === 2 && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full bg-white border-collapse">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="py-2 px-3 border sticky left-0 bg-gray-100 z-10">Paramètre</th>
                       {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.epidermisDefect || ''}
-                            onChange={(e) => handlePaletteChange(i, 'epidermisDefect', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
+                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
                       ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('epidermisDefect')}</td>
+                      <th className="py-2 px-3 border">Moyenne</th>
                     </tr>
-                    
+                  </thead>
+                  <tbody>
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Homogeneity</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <select
-                            value={formData.palettes[i]?.homogeneity || ''}
-                            onChange={(e) => handlePaletteChange(i, 'homogeneity', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          >
-                            <option value="">Select</option>
-                            <option value="Good">Good</option>
-                            <option value="Average">Average</option>
-                            <option value="Poor">Poor</option>
-                          </select>
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">-</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Missing/Broken Grains (%)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Fermeté (kgf)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -729,7 +565,7 @@ export default function ProductQualityControlForm() {
                     </tr>
                     
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Rotting (anthracnose) (%)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Pourriture (anthracnose) (%)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -746,7 +582,7 @@ export default function ProductQualityControlForm() {
                     </tr>
                     
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Foreign Matter (%)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Matière étrangère (%)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -763,7 +599,7 @@ export default function ProductQualityControlForm() {
                     </tr>
                     
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Withered (%)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Flétri (%)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -780,7 +616,7 @@ export default function ProductQualityControlForm() {
                     </tr>
                     
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Hardened Endoderm (%)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Endoderme durci (%)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -797,7 +633,7 @@ export default function ProductQualityControlForm() {
                     </tr>
                     
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Parasite Presence (%)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Présence de parasite (%)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -814,7 +650,7 @@ export default function ProductQualityControlForm() {
                     </tr>
                     
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Parasite Attack (%)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Attaque de parasite (%)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -831,7 +667,7 @@ export default function ProductQualityControlForm() {
                     </tr>
                     
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Temperature (°C)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Température (°C)</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -847,57 +683,57 @@ export default function ProductQualityControlForm() {
                     </tr>
                     
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Foreign Odor/Taste</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <select
-                            value={formData.palettes[i]?.odorOrTaste || ''}
-                            onChange={(e) => handlePaletteChange(i, 'odorOrTaste', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          >
-                            <option value="">Select</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                          </select>
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">-</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Package Weight (kg)</td>
+                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Odeur ou goût</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={formData.palettes[i]?.packageWeight || ''}
-                            onChange={(e) => handlePaletteChange(i, 'packageWeight', e.target.value)}
+                            type="text"
+                            value={formData.palettes[i]?.odorOrTaste || ''}
+                            onChange={(e) => handlePaletteChange(i, 'odorOrTaste', e.target.value)}
                             className="w-full p-1 border border-gray-200 rounded text-center"
                           />
                         </td>
                       ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('packageWeight')}</td>
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('odorOrTaste')}</td>
                     </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Controle des Parametres Categorie I Tab */}
+            {activeTab === 3 && (
+              <div className="overflow-x-auto mt-8">
+                <h2 className="text-lg font-semibold mb-4">Controle des Parametres Categorie I</h2>
+                <table className="min-w-full bg-white border-collapse">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="py-2 px-3 border">Paramètre</th>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
+                      ))}
+                      <th className="py-2 px-3 border">Moyenne</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Firmness (kgf)</td>
+                      <td className="py-2 px-3 border">Défaut de forma</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
                             type="number"
                             step="0.1"
                             min="0"
-                            value={formData.palettes[i]?.firmness || ''}
-                            onChange={(e) => handlePaletteChange(i, 'firmness', e.target.value)}
+                            value={formData.palettes[i]?.shapeDefect || ''}
+                            onChange={(e) => handlePaletteChange(i, 'shapeDefect', e.target.value)}
                             className="w-full p-1 border border-gray-200 rounded text-center"
                           />
                         </td>
                       ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('firmness')}</td>
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('shapeDefect')}</td>
                     </tr>
                     <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Color Defect (%)</td>
+                      <td className="py-2 px-3 border">Défaut de coloration</td>
                       {Array.from({ length: paletteCount }).map((_, i) => (
                         <td key={i} className="py-1 px-2 border">
                           <input
@@ -912,6 +748,429 @@ export default function ProductQualityControlForm() {
                       ))}
                       <td className="py-2 px-3 border font-medium">{calculateAverages('colorDefect')}</td>
                     </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Défaut d'épiderme</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={formData.palettes[i]?.epidermDefect || ''}
+                            onChange={(e) => handlePaletteChange(i, 'epidermDefect', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('epidermDefect')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Homogénéité (C/NC)</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.homogeneity || ''}
+                            onChange={(e) => handlePaletteChange(i, 'homogeneity', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('homogeneity')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Extrémité des grains</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.grainEnds || ''}
+                            onChange={(e) => handlePaletteChange(i, 'grainEnds', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('grainEnds')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Manque et cassés</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={formData.palettes[i]?.missingBroken || ''}
+                            onChange={(e) => handlePaletteChange(i, 'missingBroken', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('missingBroken')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Calibre</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={formData.palettes[i]?.size || ''}
+                            onChange={(e) => handlePaletteChange(i, 'size', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('size')}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Controle Produit Fini Tab */}
+            {activeTab === 4 && (
+              <div className="overflow-x-auto mt-8">
+                <h2 className="text-lg font-semibold mb-4">Controle Produit Fini</h2>
+                <table className="min-w-full bg-white border-collapse">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="py-2 px-3 border">Paramètre</th>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
+                      ))}
+                      <th className="py-2 px-3 border">Moyenne</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="py-2 px-3 border">Calibre</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={formData.palettes[i]?.size || ''}
+                            onChange={(e) => handlePaletteChange(i, 'size', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('size')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Nombre de colis/palette</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.palettes[i]?.packageCount || ''}
+                            onChange={(e) => handlePaletteChange(i, 'packageCount', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('packageCount')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">État d'emballage</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.packagingState || ''}
+                            onChange={(e) => handlePaletteChange(i, 'packagingState', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('packagingState')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Présence d'étiquetage</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.labelingPresence || ''}
+                            onChange={(e) => handlePaletteChange(i, 'labelingPresence', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('labelingPresence')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Coiners</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.corners || ''}
+                            onChange={(e) => handlePaletteChange(i, 'corners', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('corners')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Feuillard horizontal</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.horizontalStraps || ''}
+                            onChange={(e) => handlePaletteChange(i, 'horizontalStraps', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('horizontalStraps')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Fiche palette</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.paletteSheet || ''}
+                            onChange={(e) => handlePaletteChange(i, 'paletteSheet', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('paletteSheet')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">État de la palette en bois</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.woodenPaletteState || ''}
+                            onChange={(e) => handlePaletteChange(i, 'woodenPaletteState', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('woodenPaletteState')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Poids brut</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={formData.palettes[i]?.grossWeight || ''}
+                            onChange={(e) => handlePaletteChange(i, 'grossWeight', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('grossWeight')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Poids net</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={formData.palettes[i]?.netWeight || ''}
+                            onChange={(e) => handlePaletteChange(i, 'netWeight', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('netWeight')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">N° Lot interne</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.internalLotNumber || ''}
+                            onChange={(e) => handlePaletteChange(i, 'internalLotNumber', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('internalLotNumber')}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 border">Conformité de la palette</td>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <td key={i} className="py-1 px-2 border">
+                          <input
+                            type="text"
+                            value={formData.palettes[i]?.paletteConformity || ''}
+                            onChange={(e) => handlePaletteChange(i, 'paletteConformity', e.target.value)}
+                            className="w-full p-1 border border-gray-200 rounded text-center"
+                          />
+                        </td>
+                      ))}
+                      <td className="py-2 px-3 border font-medium">{calculateAverages('paletteConformity')}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+          {/* Tolerance Tab */}
+{activeTab === 5 && (
+  <div className="overflow-x-auto mt-8">
+    <h2 className="text-lg font-semibold mb-4">Tolerance</h2>
+    <table className="min-w-full bg-white border-collapse">
+      <thead>
+        <tr className="bg-gray-100">
+          <th className="py-2 px-3 border">Paramètre</th>
+          <th className="py-2 px-3 border">Résultat</th>
+          <th className="py-2 px-3 border">Conforme</th>
+          <th className="py-2 px-3 border">Non Conforme</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td className="py-2 px-3 border">Caractéristique minimale</td>
+          <td className="py-2 px-3 border">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={formData.tolerance?.minCharacteristic || ''}
+              onChange={(e) => handleInputChange('tolerance.minCharacteristic', e.target.value)}
+              className="w-full p-1 border border-gray-200 rounded text-center"
+            />
+          </td>
+          <td className="py-2 px-3 border text-center">
+            <input
+              type="checkbox"
+              checked={formData.tolerance?.minCharacteristicConform || false}
+              onChange={(e) => handleInputChange('tolerance.minCharacteristicConform', e.target.checked)}
+            />
+          </td>
+          <td className="py-2 px-3 border text-center">
+            <input
+              type="checkbox"
+              checked={formData.tolerance?.minCharacteristicNonConform || false}
+              onChange={(e) => handleInputChange('tolerance.minCharacteristicNonConform', e.target.checked)}
+            />
+          </td>
+        </tr>
+
+        <tr>
+          <td className="py-2 px-3 border">Total des défauts catégorie 1</td>
+          <td className="py-2 px-3 border">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={formData.tolerance?.category1Defects || ''}
+              onChange={(e) => handleInputChange('tolerance.category1Defects', e.target.value)}
+              className="w-full p-1 border border-gray-200 rounded text-center"
+            />
+          </td>
+          <td className="py-2 px-3 border text-center">
+            <input
+              type="checkbox"
+              checked={formData.tolerance?.category1DefectsConform || false}
+              onChange={(e) => handleInputChange('tolerance.category1DefectsConform', e.target.checked)}
+            />
+          </td>
+          <td className="py-2 px-3 border text-center">
+            <input
+              type="checkbox"
+              checked={formData.tolerance?.category1DefectsNonConform || false}
+              onChange={(e) => handleInputChange('tolerance.category1DefectsNonConform', e.target.checked)}
+            />
+          </td>
+        </tr>
+
+        <tr>
+          <td className="py-2 px-3 border">Total des défauts catégorie 2</td>
+          <td className="py-2 px-3 border">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={formData.tolerance?.category2Defects || ''}
+              onChange={(e) => handleInputChange('tolerance.category2Defects', e.target.value)}
+              className="w-full p-1 border border-gray-200 rounded text-center"
+            />
+          </td>
+          <td className="py-2 px-3 border text-center">
+            <input
+              type="checkbox"
+              checked={formData.tolerance?.category2DefectsConform || false}
+              onChange={(e) => handleInputChange('tolerance.category2DefectsConform', e.target.checked)}
+            />
+          </td>
+          <td className="py-2 px-3 border text-center">
+            <input
+              type="checkbox"
+              checked={formData.tolerance?.category2DefectsNonConform || false}
+              onChange={(e) => handleInputChange('tolerance.category2DefectsNonConform', e.target.checked)}
+            />
+          </td>
+        </tr>
+
+        <tr>
+          <td className="py-2 px-3 border">Total des défauts catégorie 3</td>
+          <td className="py-2 px-3 border">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={formData.tolerance?.category3Defects || ''}
+              onChange={(e) => handleInputChange('tolerance.category3Defects', e.target.value)}
+              className="w-full p-1 border border-gray-200 rounded text-center"
+            />
+          </td>
+          <td className="py-2 px-3 border text-center">
+            <input
+              type="checkbox"
+              checked={formData.tolerance?.category3DefectsConform || false}
+              onChange={(e) => handleInputChange('tolerance.category3DefectsConform', e.target.checked)}
+            />
+          </td>
+          <td className="py-2 px-3 border text-center">
+            <input
+              type="checkbox"
+              checked={formData.tolerance?.category3DefectsNonConform || false}
+              onChange={(e) => handleInputChange('tolerance.category3DefectsNonConform', e.target.checked)}
+            />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+)}
+
+
+            {/* Final Table Tab */}
+            {activeTab === 6 && (
+              <div className="overflow-x-auto mt-8">
+                <h2 className="text-lg font-semibold mb-4">Final Table</h2>
+                <table className="min-w-full bg-white border-collapse">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="py-2 px-3 border">Paramètre</th>
+                      {Array.from({ length: paletteCount }).map((_, i) => (
+                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
+                      ))}
+                      <th className="py-2 px-3 border">Moyenne</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Add rows as per requirements */}
                   </tbody>
                 </table>
               </div>

@@ -197,11 +197,7 @@ export default function Sidebar() {
       icon: <ArchiveRestore className="h-5 w-5 mr-2" />,
       path: "/Archivagedescontroles",
     },
-            {
-      title: "test2",
-      icon: <ArchiveRestore className="h-5 w-5 mr-2" />,
-      path: "/Archivagedescontroles2",
-    },
+
   ];
   const ReceptionItems = [
     {

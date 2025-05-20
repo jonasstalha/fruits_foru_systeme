@@ -3,6 +3,20 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/components/auth-provider";
 import { motion } from "framer-motion";
 import logo from "../../assets/logo.png"; // Corrected path to the company logo
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
+
+
+const fetchUserRole = async () => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) return null;
+
+  const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+  if (userDoc.exists()) {
+    return userDoc.data().role; // e.g., "admin", "operator", etc.
+  }
+  return null;
+};
 
 export function LoginPage() {
   const [email, setEmail] = useState("");

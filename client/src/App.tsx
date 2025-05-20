@@ -30,6 +30,9 @@ import historiquedeconsomation from "./pages/production/historiquedeconsomation"
 import Archivagedesfacture from "@/pages/comptability/Archivagedesfacture"
 import templatest from "@/pages/comptability/templatest";
 import FichedExpidition from "@/pages/logistique/FichedExpidition";
+import Rapportqualité from "@/pages/quality/Rapportqualité";
+import Archivagedescontroles from "@/pages/quality/Archivagedescontroles";
+
 function AuthenticatedRoutes() {
   return (
     <MainLayout>
@@ -59,6 +62,9 @@ function AuthenticatedRoutes() {
         <Route path="/Archivagedesfacture" component={Archivagedesfacture} />
         <Route path="/Templates" component={templatest} />
         <Route path="/fichedexpidition" component={FichedExpidition} />
+        <Route path="/Rapportqualité" component={Rapportqualité} />
+        <Route path="/Archivagedescontroles" component={Archivagedescontroles} />
+        {/* Add more routes here as needed */}
         <Route component={NotFound} />
       </Switch>
     </MainLayout>
