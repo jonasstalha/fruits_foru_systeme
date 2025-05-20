@@ -37,3 +37,4 @@ storage/
 coverage/
 logs/
 *.log
+*.exe
