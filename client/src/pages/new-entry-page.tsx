@@ -1,45 +1,46 @@
-import { useState ,useEffect} from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useToast } from "@/hooks/use-toast";
-import { api, addAvocadoTracking } from "@/lib/queryClient";
-import { AvocadoTracking, AvocadoVariety, QualityGrade } from "@shared/schema";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Loader2 } from "lucide-react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../lib/firebase"; // adjust path as needed
-
-
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, Loader2, Save, CheckCircle, Clock, ArrowLeft, ArrowRight, Package, Truck, Factory, Warehouse, Ship, MapPin } from "lucide-react";
+import { addAvocadoTracking, getFarms } from "@/lib/firebaseService";
+import { useNavigate } from "react-router-dom";
 
 export default function NewEntryPage() {
   const [farms, setFarms] = useState([]);
+  const [error, setError] = useState('');
 
-useEffect(() => {
-  const fetchFarms = async () => {
-    const farmsSnapshot = await getDocs(collection(db, "farms"));
-    const farmsData = farmsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    setFarms(farmsData);
-  };
-  fetchFarms();
-}, []);
+  useEffect(() => {
+    const loadFarms = async () => {
+      try {
+        const farmsData = await getFarms();
+        setFarms(farmsData);
+      } catch (error) {
+        console.error("Error loading farms:", error);
+      }
+    };
+    loadFarms();
+  }, []);
 
-  const [location, setLocation] = useLocation();
-  const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState<Partial<AvocadoTracking>>({
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [draftId, setDraftId] = useState(null);
+  const [lastSaved, setLastSaved] = useState(null);
+
+  const [formData, setFormData] = useState({
     harvest: {
       harvestDate: "",
       farmLocation: "",
       farmerId: "",
       lotNumber: "",
       variety: "hass",
+      avocadoType: "",
     },
     transport: {
       lotNumber: "",
@@ -48,12 +49,14 @@ useEffect(() => {
       vehicleId: "",
       departureDateTime: "",
       arrivalDateTime: "",
+      temperature: 0,
     },
     sorting: {
       lotNumber: "",
       sortingDate: "",
       qualityGrade: "A",
       rejectedCount: 0,
+      notes: "",
     },
     packaging: {
       lotNumber: "",
@@ -63,6 +66,8 @@ useEffect(() => {
       netWeight: 0,
       avocadoCount: 0,
       boxType: "case",
+      boxTypes: [],
+      calibers: [],
     },
     storage: {
       boxId: "",
@@ -87,262 +92,291 @@ useEffect(() => {
       clientLocation: "",
       notes: "",
     },
+    selectedFarm: "",
+    packagingDate: "",
+    boxId: "",
+    boxTypes: [],
+    calibers: [],
+    avocadoCount: 0,
+    status: "draft",
+    completedSteps: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   });
-  
-  const handleSubmit = async (e: React.FormEvent) => {
+
+  const toast = (message) => {
+    // Mock toast function for demo
+    console.log(message.title + ": " + message.description);
+  };
+
+  const validateCurrentStep = () => {
+    switch (currentStep) {
+      case 1:
+        return formData.harvest.harvestDate && formData.harvest.farmerId && formData.harvest.lotNumber;
+      case 2:
+        return formData.transport.transportCompany && formData.transport.driverName;
+      case 3:
+        return formData.sorting.sortingDate && formData.sorting.qualityGrade;
+      case 4:
+        return formData.packagingDate && formData.boxId;
+      case 5:
+        return formData.storage.entryDate && formData.storage.storageRoomId;
+      case 6:
+        return formData.export.loadingDate && formData.export.containerId;
+      case 7:
+        return formData.delivery.estimatedDeliveryDate && formData.delivery.clientName;
+      default:
+        return false;
+    }
+  };
+
+  const getStepCompletionPercentage = () => {
+    const completedSteps = formData.completedSteps?.length || 0;
+    return Math.round((completedSteps / 7) * 100);
+  };
+
+  const saveDraft = async (silent = false) => {
+    setIsSavingDraft(true);
+    try {
+      // Remove id, createdAt, and updatedAt from formData
+      const { id, createdAt, updatedAt, ...draftData } = formData;
+
+      // Add draft status
+      const draftSubmission = {
+        ...draftData,
+        status: 'draft',
+        lastSaved: new Date().toISOString()
+      };
+
+      // Save draft to Firebase
+      const savedDraft = await addAvocadoTracking(draftSubmission);
+      setDraftId(savedDraft.id);
+      setLastSaved(new Date().toISOString());
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      // Show error alert
+      setError('Failed to save draft. Please try again.');
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
-    try {
-      const updatedFormData = { ...formData };
-      
-      const lotNumber = updatedFormData.harvest?.lotNumber;
-      if (lotNumber) {
-        if (updatedFormData.transport) {
-          updatedFormData.transport.lotNumber = lotNumber;
-        }
-        if (updatedFormData.sorting) {
-          updatedFormData.sorting.lotNumber = lotNumber;
-        }
-        if (updatedFormData.packaging) {
-          updatedFormData.packaging.lotNumber = lotNumber;
-        }
-      }
-      
-      const boxId = updatedFormData.packaging?.boxId;
-      if (boxId) {
-        if (updatedFormData.storage) {
-          updatedFormData.storage.boxId = boxId;
-        }
-        if (updatedFormData.export) {
-          updatedFormData.export.boxId = boxId;
-        }
-        if (updatedFormData.delivery) {
-          updatedFormData.delivery.boxId = boxId;
-        }
-      }
 
-      const cleanData: Partial<AvocadoTracking> = {
-        harvest: {
-          harvestDate: updatedFormData.harvest?.harvestDate || "",
-          farmLocation: updatedFormData.harvest?.farmLocation || "",
-          farmerId: updatedFormData.harvest?.farmerId || "",
-          lotNumber: updatedFormData.harvest?.lotNumber || "",
-          variety: updatedFormData.harvest?.variety || "hass"
-        },
-        transport: {
-          lotNumber: updatedFormData.transport?.lotNumber || "",
-          transportCompany: updatedFormData.transport?.transportCompany || "",
-          driverName: updatedFormData.transport?.driverName || "",
-          vehicleId: updatedFormData.transport?.vehicleId || "",
-          departureDateTime: updatedFormData.transport?.departureDateTime || "",
-          arrivalDateTime: updatedFormData.transport?.arrivalDateTime || "",
-          temperature: updatedFormData.transport?.temperature || 0
-        },
-        sorting: {
-          lotNumber: updatedFormData.sorting?.lotNumber || "",
-          sortingDate: updatedFormData.sorting?.sortingDate || "",
-          qualityGrade: updatedFormData.sorting?.qualityGrade || "A",
-          rejectedCount: updatedFormData.sorting?.rejectedCount || 0,
-          notes: updatedFormData.sorting?.notes || ""
-        },
-        packaging: {
-          lotNumber: updatedFormData.packaging?.lotNumber || "",
-          packagingDate: updatedFormData.packaging?.packagingDate || "",
-          boxId: updatedFormData.packaging?.boxId || "",
-          workerIds: updatedFormData.packaging?.workerIds || [],
-          netWeight: updatedFormData.packaging?.netWeight || 0,
-          avocadoCount: updatedFormData.packaging?.avocadoCount || 0,
-          boxType: updatedFormData.packaging?.boxType || "case"
-        },
-        storage: {
-          boxId: updatedFormData.storage?.boxId || "",
-          entryDate: updatedFormData.storage?.entryDate || "",
-          storageTemperature: updatedFormData.storage?.storageTemperature || 0,
-          storageRoomId: updatedFormData.storage?.storageRoomId || "",
-          exitDate: updatedFormData.storage?.exitDate || ""
-        },
-        export: {
-          boxId: updatedFormData.export?.boxId || "",
-          loadingDate: updatedFormData.export?.loadingDate || "",
-          containerId: updatedFormData.export?.containerId || "",
-          driverName: updatedFormData.export?.driverName || "",
-          vehicleId: updatedFormData.export?.vehicleId || "",
-          destination: updatedFormData.export?.destination || ""
-        },
-        delivery: {
-          boxId: updatedFormData.delivery?.boxId || "",
-          estimatedDeliveryDate: updatedFormData.delivery?.estimatedDeliveryDate || "",
-          actualDeliveryDate: updatedFormData.delivery?.actualDeliveryDate || "",
-          clientName: updatedFormData.delivery?.clientName || "",
-          clientLocation: updatedFormData.delivery?.clientLocation || "",
-          notes: updatedFormData.delivery?.notes || ""
-        }
-      };
-      
-      await addAvocadoTracking(cleanData as AvocadoTracking)();
-      
-      toast({
-        title: "Succès",
-        description: "Le suivi des avocats a été enregistré avec succès",
-      });
-      
-      setLocation("/lots");
+    try {
+      // Remove id, createdAt, and updatedAt from formData
+      const { id, createdAt, updatedAt, ...submissionData } = formData;
+
+      // Submit data to Firebase
+      await addAvocadoTracking(submissionData);
+
+      // Navigate to lots page after successful submission
+      navigate('/lots');
     } catch (error) {
-      console.error("Error submitting form:", error);
-      toast({
-        title: "Erreur",
-        description: error instanceof Error ? error.message : "Une erreur est survenue lors de l'enregistrement",
-        variant: "destructive",
-      });
+      console.error('Error submitting form:', error);
+      // Show error alert
+      setError('Failed to submit form. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleChange = (section: keyof AvocadoTracking, field: string, value: any) => {
+  const handleChange = (section, field, value) => {
     setFormData((prev) => {
       const updatedSection = {
-        ...(prev[section] as Record<string, any> || {}),
+        ...(prev[section] || {}),
         [field]: value,
       };
-      return {
+      const newData = {
         ...prev,
         [section]: updatedSection,
+        updatedAt: new Date().toISOString(),
       };
+      return newData;
     });
   };
 
-  const addNewPackage = () => {
-    const newPackage: AvocadoTracking["packaging"] = {
-      lotNumber: "",
-      packagingDate: "",
-      boxId: "",
-      workerIds: [],
-      netWeight: 0,
-      avocadoCount: 12,
-      boxType: "case",
-    };
-    setFormData((prev) => {
-      const updatedPackaging = Array.isArray(prev.packaging) ? prev.packaging : [];
-      return {
+  const markStepComplete = () => {
+    if (validateCurrentStep()) {
+      setFormData(prev => ({
         ...prev,
-        packaging: [...updatedPackaging, newPackage],
-      };
-    });
+        completedSteps: [...new Set([...(prev.completedSteps || []), currentStep])],
+        updatedAt: new Date().toISOString(),
+      }));
+    }
   };
 
-  const removePackage = (index: number) => {
-    if (!Array.isArray(formData.packaging)) return;
-    const updated = formData.packaging.filter((_, i) => i !== index);
-    setFormData((prev) => ({
-      ...prev,
-      packaging: updated,
-    }));
+  const nextStep = () => {
+    markStepComplete();
+    setCurrentStep(prev => Math.min(prev + 1, 7));
   };
 
-  const handlePackageChange = (index: number, field: keyof AvocadoTracking["packaging"], value: any) => {
-    if (!Array.isArray(formData.packaging)) return;
-    const updated = [...formData.packaging];
-    updated[index] = { ...updated[index], [field]: value };
-    setFormData((prev) => ({
-      ...prev,
-      packaging: updated,
-    }));
-  };
-
-  const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, 7));
   const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
+
+  const goToStep = (step) => {
+    setCurrentStep(step);
+  };
+
+  const handleBoxTypeToggle = (boxType) => {
+    setFormData(prev => ({
+      ...prev,
+      boxTypes: prev.boxTypes.includes(boxType)
+        ? prev.boxTypes.filter(t => t !== boxType)
+        : [...prev.boxTypes, boxType]
+    }));
+  };
+
+  const handleCaliberToggle = (caliber) => {
+    setFormData(prev => ({
+      ...prev,
+      calibers: prev.calibers.includes(caliber)
+        ? prev.calibers.filter(c => c !== caliber)
+        : [...prev.calibers, caliber]
+    }));
+  };
+
+  const stepIcons = {
+    1: "🌱",
+    2: "🚛",
+    3: "🏭",
+    4: "📦",
+    5: "🏪",
+    6: "🚢",
+    7: "📍"
+  };
+
+  const stepTitles = {
+    1: "Récolte",
+    2: "Transport",
+    3: "Tri & Qualité",
+    4: "Emballage",
+    5: "Stockage",
+    6: "Export",
+    7: "Livraison"
+  };
 
   const renderStep = () => {
     switch (currentStep) {
       case 1:
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>📝 Récolte (Ferme)</CardTitle>
+          <Card className="border-l-4 border-l-green-500">
+            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50">
+              <CardTitle className="flex items-center gap-3 text-green-800">
+                <span className="text-2xl">🌱</span>
+                <div>
+                  <div>Récolte (Ferme)</div>
+                  <div className="text-sm font-normal text-green-600">Informations sur la récolte des avocats</div>
+                </div>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="harvestDate">Date de récolte</Label>
-                <Input
-                  id="harvestDate"
-                  type="datetime-local"
-                  value={formData.harvest?.harvestDate}
-                  onChange={(e) => handleChange("harvest", "harvestDate", e.target.value)}
-                  required
-                />
-              </div>
+            <CardContent className="space-y-6 pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label htmlFor="selectedFarm">🌾 Sélectionnez une ferme</label>
-                  <select
-                    id="selectedFarm"
-                    value={formData.selectedFarm || ""}
-                    onChange={(e) => setFormData({ ...formData, selectedFarm: e.target.value })}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="">-- Choisir une ferme --</option>
-                    {farms.map((farm) =>  (
-                      <option key={farm.id} value={farm.id}>
-                        {farm.name} - {farm.location}
-                      </option>
-                    ))}
-                  </select>
+                  <Label htmlFor="harvestDate" className="flex items-center gap-2 font-semibold">
+                    📅 Date de récolte <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="harvestDate"
+                    type="datetime-local"
+                    value={formData.harvest?.harvestDate || ""}
+                    onChange={(e) => handleChange("harvest", "harvestDate", e.target.value)}
+                    className="border-2 focus:border-green-500 transition-colors"
+                    required
+                  />
                 </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="farmerId">ID Agriculteur</Label>
-                <Input
-                  id="farmerId"
-                  value={formData.harvest?.farmerId}
-                  onChange={(e) => handleChange("harvest", "farmerId", e.target.value)}
-                  required
-                />
-              </div>
-      
-              <div className="space-y-2">
-                <Label htmlFor="lotNumber">Numéro de lot</Label>
-                <Input
-                  id="lotNumber"
-                  value={formData.harvest?.lotNumber}
-                  onChange={(e) => handleChange("harvest", "lotNumber", e.target.value)}
-                  required
-                />
-              </div>
-      
-              <div className="space-y-2">
-                <Label htmlFor="avocadoType">Type d'avocat</Label>
-                <Select
-                  value={(formData.harvest as any)?.avocadoType || ""}
-                  onValueChange={(value) => handleChange("harvest", "avocadoType", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="conventionnel">Conventionnel</SelectItem>
-                    <SelectItem value="bio">Bio</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-      
-              <div className="space-y-2">
-                <Label htmlFor="variety">Variété d'avocat</Label>
-                <Select
-                  value={formData.harvest?.variety}
-                  onValueChange={(value) => handleChange("harvest", "variety", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner une variété" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hass">Hass</SelectItem>
-                    <SelectItem value="fuerte">Fuerte</SelectItem>
-                    <SelectItem value="bacon">Bacon</SelectItem>
-                    <SelectItem value="zutano">Zutano</SelectItem>
-                    <SelectItem value="other">Autre</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  <Label htmlFor="selectedFarm" className="flex items-center gap-2 font-semibold">
+                    🏡 Sélectionnez une ferme
+                  </Label>
+                  <Select
+                    value={formData.selectedFarm || ""}
+                    onValueChange={(value) => setFormData({ ...formData, selectedFarm: value })}
+                  >
+                    <SelectTrigger className="border-2 focus:border-green-500">
+                      <SelectValue placeholder="Choisir une ferme" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {farms.map((farm) => (
+                        <SelectItem key={farm.id} value={farm.id}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{farm.name}</span>
+                            <span className="text-gray-500">- {farm.location}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="farmerId" className="flex items-center gap-2 font-semibold">
+                    👨‍🌾 ID Agriculteur <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="farmerId"
+                    value={formData.harvest?.farmerId || ""}
+                    onChange={(e) => handleChange("harvest", "farmerId", e.target.value)}
+                    className="border-2 focus:border-green-500 transition-colors"
+                    placeholder="Ex: AGR-2024-001"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="lotNumber" className="flex items-center gap-2 font-semibold">
+                    🏷️ Numéro de lot <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="lotNumber"
+                    value={formData.harvest?.lotNumber || ""}
+                    onChange={(e) => handleChange("harvest", "lotNumber", e.target.value)}
+                    className="border-2 focus:border-green-500 transition-colors"
+                    placeholder="Ex: LOT-2024-001"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="avocadoType" className="flex items-center gap-2 font-semibold">
+                    🥑 Type d'avocat
+                  </Label>
+                  <Select
+                    value={formData.harvest?.avocadoType || ""}
+                    onValueChange={(value) => handleChange("harvest", "avocadoType", value)}
+                  >
+                    <SelectTrigger className="border-2 focus:border-green-500">
+                      <SelectValue placeholder="Sélectionner un type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="conventionnel">🌱 Conventionnel</SelectItem>
+                      <SelectItem value="bio">🌿 Bio</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="variety" className="flex items-center gap-2 font-semibold">
+                    🌳 Variété d'avocat
+                  </Label>
+                  <Select
+                    value={formData.harvest?.variety || "hass"}
+                    onValueChange={(value) => handleChange("harvest", "variety", value)}
+                  >
+                    <SelectTrigger className="border-2 focus:border-green-500">
+                      <SelectValue placeholder="Sélectionner une variété" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hass">🥑 Hass</SelectItem>
+                      <SelectItem value="fuerte">🌿 Fuerte</SelectItem>
+                      <SelectItem value="bacon">🥓 Bacon</SelectItem>
+                      <SelectItem value="zutano">🌱 Zutano</SelectItem>
+                      <SelectItem value="other">❓ Autre</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -350,66 +384,94 @@ useEffect(() => {
 
       case 2:
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>🚛 Transport vers l'usine</CardTitle>
+          <Card className="border-l-4 border-l-blue-500">
+            <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50">
+              <CardTitle className="flex items-center gap-3 text-blue-800">
+                <span className="text-2xl">🚛</span>
+                <div>
+                  <div>Transport vers l'usine</div>
+                  <div className="text-sm font-normal text-blue-600">Informations de transport et logistique</div>
+                </div>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="transportCompany">Société de transport</Label>
-                <Input
-                  id="transportCompany"
-                  value={formData.transport?.transportCompany}
-                  onChange={(e) => handleChange("transport", "transportCompany", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="driverName">Nom du chauffeur</Label>
-                <Input
-                  id="driverName"
-                  value={formData.transport?.driverName}
-                  onChange={(e) => handleChange("transport", "driverName", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="vehicleId">ID du véhicule</Label>
-                <Input
-                  id="vehicleId"
-                  value={formData.transport?.vehicleId}
-                  onChange={(e) => handleChange("transport", "vehicleId", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="departureDateTime">Date et heure de départ</Label>
-                <Input
-                  id="departureDateTime"
-                  type="datetime-local"
-                  value={formData.transport?.departureDateTime}
-                  onChange={(e) => handleChange("transport", "departureDateTime", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="arrivalDateTime">Date et heure d'arrivée</Label>
-                <Input
-                  id="arrivalDateTime"
-                  type="datetime-local"
-                  value={formData.transport?.arrivalDateTime}
-                  onChange={(e) => handleChange("transport", "arrivalDateTime", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="temperature">Température (°C)</Label>
-                <Input
-                  id="temperature"
-                  type="number"
-                  value={formData.transport?.temperature}
-                  onChange={(e) => handleChange("transport", "temperature", parseFloat(e.target.value))}
-                />
+            <CardContent className="space-y-6 pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="transportCompany" className="flex items-center gap-2 font-semibold">
+                    🏢 Société de transport <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="transportCompany"
+                    value={formData.transport?.transportCompany || ""}
+                    onChange={(e) => handleChange("transport", "transportCompany", e.target.value)}
+                    className="border-2 focus:border-blue-500 transition-colors"
+                    placeholder="Ex: Transport Express SA"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="driverName" className="flex items-center gap-2 font-semibold">
+                    👨‍💼 Nom du chauffeur <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="driverName"
+                    value={formData.transport?.driverName || ""}
+                    onChange={(e) => handleChange("transport", "driverName", e.target.value)}
+                    className="border-2 focus:border-blue-500 transition-colors"
+                    placeholder="Ex: Jean Dupont"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="vehicleId" className="flex items-center gap-2 font-semibold">
+                    🚚 ID du véhicule
+                  </Label>
+                  <Input
+                    id="vehicleId"
+                    value={formData.transport?.vehicleId || ""}
+                    onChange={(e) => handleChange("transport", "vehicleId", e.target.value)}
+                    className="border-2 focus:border-blue-500 transition-colors"
+                    placeholder="Ex: VH-2024-001"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="temperature" className="flex items-center gap-2 font-semibold">
+                    🌡️ Température (°C)
+                  </Label>
+                  <Input
+                    id="temperature"
+                    type="number"
+                    step="0.1"
+                    value={formData.transport?.temperature || ""}
+                    onChange={(e) => handleChange("transport", "temperature", parseFloat(e.target.value) || 0)}
+                    className="border-2 focus:border-blue-500 transition-colors"
+                    placeholder="Ex: 4.5"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="departureDateTime" className="flex items-center gap-2 font-semibold">
+                    🕐 Date et heure de départ
+                  </Label>
+                  <Input
+                    id="departureDateTime"
+                    type="datetime-local"
+                    value={formData.transport?.departureDateTime || ""}
+                    onChange={(e) => handleChange("transport", "departureDateTime", e.target.value)}
+                    className="border-2 focus:border-blue-500 transition-colors"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="arrivalDateTime" className="flex items-center gap-2 font-semibold">
+                    🕑 Date et heure d'arrivée
+                  </Label>
+                  <Input
+                    id="arrivalDateTime"
+                    type="datetime-local"
+                    value={formData.transport?.arrivalDateTime || ""}
+                    onChange={(e) => handleChange("transport", "arrivalDateTime", e.target.value)}
+                    className="border-2 focus:border-blue-500 transition-colors"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -417,237 +479,271 @@ useEffect(() => {
 
       case 3:
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>🏭 Tri et Qualité</CardTitle>
+          <Card className="border-l-4 border-l-purple-500">
+            <CardHeader className="bg-gradient-to-r from-purple-50 to-violet-50">
+              <CardTitle className="flex items-center gap-3 text-purple-800">
+                <span className="text-2xl">🏭</span>
+                <div>
+                  <div>Tri et Qualité</div>
+                  <div className="text-sm font-normal text-purple-600">Contrôle qualité et classification</div>
+                </div>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="sortingDate">Date de tri</Label>
-                <Input
-                  id="sortingDate"
-                  type="datetime-local"
-                  value={formData.sorting?.sortingDate}
-                  onChange={(e) => handleChange("sorting", "sortingDate", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="qualityGrade">Grade de qualité</Label>
-                <Select
-                  value={formData.sorting?.qualityGrade}
-                  onValueChange={(value) => handleChange("sorting", "qualityGrade", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un grade" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="A">Grade A</SelectItem>
-                    <SelectItem value="B">Grade B</SelectItem>
-                    <SelectItem value="C">Grade C</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="rejectedCount">avocats rejetés</Label>
-                <Input
-                  id="rejectedCount"
-                  type="number"
-                  value={formData.sorting?.rejectedCount}
-                  onChange={(e) => handleChange("sorting", "rejectedCount", parseInt(e.target.value))}
-                  required
-                />
+            <CardContent className="space-y-6 pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="sortingDate" className="flex items-center gap-2 font-semibold">
+                    📅 Date de tri <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="sortingDate"
+                    type="datetime-local"
+                    value={formData.sorting?.sortingDate || ""}
+                    onChange={(e) => handleChange("sorting", "sortingDate", e.target.value)}
+                    className="border-2 focus:border-purple-500 transition-colors"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="qualityGrade" className="flex items-center gap-2 font-semibold">
+                    ⭐ Grade de qualité <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={formData.sorting?.qualityGrade || "A"}
+                    onValueChange={(value) => handleChange("sorting", "qualityGrade", value)}
+                  >
+                    <SelectTrigger className="border-2 focus:border-purple-500">
+                      <SelectValue placeholder="Sélectionner un grade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="A">🌟 Grade A - Premium</SelectItem>
+                      <SelectItem value="B">⭐ Grade B - Standard</SelectItem>
+                      <SelectItem value="C">✨ Grade C - Économique</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rejectedCount" className="flex items-center gap-2 font-semibold">
+                    ❌ Avocats rejetés
+                  </Label>
+                  <Input
+                    id="rejectedCount"
+                    type="number"
+                    min="0"
+                    value={formData.sorting?.rejectedCount || ""}
+                    onChange={(e) => handleChange("sorting", "rejectedCount", parseInt(e.target.value) || 0)}
+                    className="border-2 focus:border-purple-500 transition-colors"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="sortingNotes" className="flex items-center gap-2 font-semibold">
+                    📝 Notes de tri
+                  </Label>
+                  <Textarea
+                    id="sortingNotes"
+                    value={formData.sorting?.notes || ""}
+                    onChange={(e) => handleChange("sorting", "notes", e.target.value)}
+                    className="border-2 focus:border-purple-500 transition-colors"
+                    placeholder="Observations sur la qualité, défauts constatés..."
+                    rows={3}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
         );
-        
-        
-        case 4:
-          return (
-            <Card>
-              <CardHeader>
-                <CardTitle>📦 Emballage</CardTitle>
-                <CardDescription>
-                  Remplissez les informations détaillées sur l'emballage, les calibres, le poids, et l'équipe.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
 
-                {/* 📅 Date */}
+      case 4:
+        return (
+          <Card className="border-l-4 border-l-amber-500">
+            <CardHeader className="bg-gradient-to-r from-amber-50 to-yellow-50">
+              <CardTitle className="flex items-center gap-3 text-amber-800">
+                <span className="text-2xl">📦</span>
+                <div>
+                  <div>Emballage</div>
+                  <div className="text-sm font-normal text-amber-600">Conditionnement des avocats</div>
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="packagingDate">📅 Date de l'emballage</Label>
+                  <Label htmlFor="packagingDate" className="flex items-center gap-2 font-semibold">
+                    📅 Date d'emballage <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="packagingDate"
-                    type="date"
+                    type="datetime-local"
                     value={formData.packagingDate || ""}
                     onChange={(e) => setFormData({ ...formData, packagingDate: e.target.value })}
-                    className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                    className="border-2 focus:border-amber-500 transition-colors"
+                    required
                   />
                 </div>
 
-                {/* 🧰 ID de boîte */}
                 <div className="space-y-2">
-                  <Label htmlFor="boxId">🔢 ID de la boîte</Label>
+                  <Label htmlFor="boxId" className="flex items-center gap-2 font-semibold">
+                    📦 ID de la boîte <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="boxId"
                     value={formData.boxId || ""}
                     onChange={(e) => setFormData({ ...formData, boxId: e.target.value })}
-                    placeholder="Ex: BX2024-0987"
-                    className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                    className="border-2 focus:border-amber-500 transition-colors"
+                    placeholder="Ex: BOX-2024-001"
+                    required
                   />
                 </div>
 
-                {/* 📦 Type(s) de boîte */}
                 <div className="space-y-2">
-                  <Label>📦 Type(s) d'emballage</Label>
-                  <div className="flex flex-wrap gap-3">
-                    {['caisse', 'boite', 'palette', 'sac', 'autre'].map((type) => (
-                      <label key={type} className="flex items-center space-x-2 bg-gray-100 rounded p-2 hover:bg-gray-200 transition">
-                        <input
-                          type="checkbox"
-                          checked={formData.boxTypes?.includes(type) || false}
-                          onChange={(e) => {
-                            const newTypes = e.target.checked
-                              ? [...(formData.boxTypes || []), type]
-                              : (formData.boxTypes || []).filter((t) => t !== type);
-                            setFormData({ ...formData, boxTypes: newTypes });
-                          }}
-                          className="focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <span className="capitalize">{type}</span>
-                      </label>
-                    ))}
-                  </div>
+                  <Label htmlFor="netWeight" className="flex items-center gap-2 font-semibold">
+                    ⚖️ Poids net (kg)
+                  </Label>
+                  <Input
+                    id="netWeight"
+                    type="number"
+                    step="0.1"
+                    value={formData.packaging?.netWeight || ""}
+                    onChange={(e) => handleChange("packaging", "netWeight", parseFloat(e.target.value) || 0)}
+                    className="border-2 focus:border-amber-500 transition-colors"
+                    placeholder="Ex: 10.5"
+                  />
                 </div>
 
-                {/* 🥑 Calibres */}
                 <div className="space-y-2">
-                  <Label>🥑 Calibre(s) des avocats</Label>
-                  <div className="flex flex-wrap gap-3">
-                    {[...Array(10)].map((_, i) => {
-                      const caliber = 12 + i * 2;
-                      return (
-                        <label key={caliber} className="flex items-center space-x-2 bg-green-50 rounded p-2 hover:bg-green-100 transition">
-                          <input
-                            type="checkbox"
-                            checked={formData.calibers?.includes(caliber) || false}
-                            onChange={(e) => {
-                              const newCalibers = e.target.checked
-                                ? [...(formData.calibers || []), caliber]
-                                : (formData.calibers || []).filter((c) => c !== caliber);
-                              setFormData({ ...formData, calibers: newCalibers });
-                            }}
-                            className="focus:ring-green-500 focus:border-green-500"
-                          />
-                          <span>{caliber}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* ⚖️ Poids net */}
-                <div className="space-y-2">
-                  <Label>⚖️ Poids net</Label>
-                  <div className="flex flex-wrap gap-3">
-                    {['4kg', '10kg', 'autre'].map((type) => (
-                      <label key={type} className="flex items-center space-x-2 bg-gray-100 rounded p-2 hover:bg-gray-200 transition">
-                        <input
-                          type="checkbox"
-                          checked={formData.boxTypes?.includes(type) || false}
-                          onChange={(e) => {
-                            const newTypes = e.target.checked
-                              ? [...(formData.boxTypes || []), type]
-                              : (formData.boxTypes || []).filter((t) => t !== type);
-                            setFormData({ ...formData, boxTypes: newTypes });
-                          }}
-                          className="focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <span className="capitalize">{type}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 🥑 Nombre d'avocats */}
-                <div className="space-y-2">
-                  <Label htmlFor="avocadoCount">🥑 Nombre total d'avocats (facultatif)</Label>
+                  <Label htmlFor="avocadoCount" className="flex items-center gap-2 font-semibold">
+                    🥑 Nombre d'avocats
+                  </Label>
                   <Input
                     id="avocadoCount"
                     type="number"
-                    min="1"
                     value={formData.avocadoCount || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, avocadoCount: parseInt(e.target.value) })
-                    }
-                    placeholder="Ex: 150"
-                    className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                    onChange={(e) => setFormData({ ...formData, avocadoCount: parseInt(e.target.value) || 0 })}
+                    className="border-2 focus:border-amber-500 transition-colors"
+                    placeholder="Ex: 48"
                   />
                 </div>
 
-                {/* 👷 Groupe des travailleurs */}
-                <div className="space-y-2">
-                  <Label htmlFor="workers">👷‍♂️ Équipe de travail</Label>
-                  <div className="flex flex-wrap gap-3">
-                    {['morning group', 'evening group', 'autre'].map((type) => (
-                      <label key={type} className="flex items-center space-x-2 bg-gray-100 rounded p-2 hover:bg-gray-200 transition">
-                        <input
-                          type="checkbox"
-                          checked={formData.boxTypes?.includes(type) || false}
-                          onChange={(e) => {
-                            const newTypes = e.target.checked
-                              ? [...(formData.boxTypes || []), type]
-                              : (formData.boxTypes || []).filter((t) => t !== type);
-                            setFormData({ ...formData, boxTypes: newTypes });
-                          }}
-                          className="focus:ring-blue-500 focus:border-blue-500"
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="flex items-center gap-2 font-semibold">
+                    📦 Types de boîtes
+                  </Label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {["4kg", "6kg", "8kg", "10kg"].map((boxType) => (
+                      <div key={boxType} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`boxType-${boxType}`}
+                          checked={formData.boxTypes.includes(boxType)}
+                          onCheckedChange={() => handleBoxTypeToggle(boxType)}
                         />
-                        <span className="capitalize">{type}</span>
-                      </label>
+                        <label
+                          htmlFor={`boxType-${boxType}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          {boxType}
+                        </label>
+                      </div>
                     ))}
                   </div>
                 </div>
 
-              </CardContent>
-            </Card>
-          );
-        
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="flex items-center gap-2 font-semibold">
+                    📏 Calibres
+                  </Label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {["16", "18", "20", "22", "24", "26"].map((caliber) => (
+                      <div key={caliber} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`caliber-${caliber}`}
+                          checked={formData.calibers.includes(caliber)}
+                          onCheckedChange={() => handleCaliberToggle(caliber)}
+                        />
+                        <label
+                          htmlFor={`caliber-${caliber}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          Calibre {caliber}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+
       case 5:
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>❄️ Stockage</CardTitle>
+          <Card className="border-l-4 border-l-indigo-500">
+            <CardHeader className="bg-gradient-to-r from-indigo-50 to-violet-50">
+              <CardTitle className="flex items-center gap-3 text-indigo-800">
+                <span className="text-2xl">🏪</span>
+                <div>
+                  <div>Stockage</div>
+                  <div className="text-sm font-normal text-indigo-600">Informations de stockage</div>
+                </div>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="entryDate">Date d'entrée</Label>
-                <Input
-                  id="entryDate"
-                  type="datetime-local"
-                  value={formData.storage?.entryDate}
-                  onChange={(e) => handleChange("storage", "entryDate", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="storageTemperature">Température de stockage (°C)</Label>
-                <Input
-                  id="storageTemperature"
-                  type="number"
-                  value={formData.storage?.storageTemperature}
-                  onChange={(e) => handleChange("storage", "storageTemperature", parseFloat(e.target.value))}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="storageRoomId">ID de la salle de stockage</Label>
-                <Input
-                  id="storageRoomId"
-                  value={formData.storage?.storageRoomId}
-                  onChange={(e) => handleChange("storage", "storageRoomId", e.target.value)}
-                  required
-                />
+            <CardContent className="space-y-6 pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="entryDate" className="flex items-center gap-2 font-semibold">
+                    📅 Date d'entrée <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="entryDate"
+                    type="datetime-local"
+                    value={formData.storage?.entryDate || ""}
+                    onChange={(e) => handleChange("storage", "entryDate", e.target.value)}
+                    className="border-2 focus:border-indigo-500 transition-colors"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="exitDate" className="flex items-center gap-2 font-semibold">
+                    📅 Date de sortie
+                  </Label>
+                  <Input
+                    id="exitDate"
+                    type="datetime-local"
+                    value={formData.storage?.exitDate || ""}
+                    onChange={(e) => handleChange("storage", "exitDate", e.target.value)}
+                    className="border-2 focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="storageTemperature" className="flex items-center gap-2 font-semibold">
+                    🌡️ Température (°C)
+                  </Label>
+                  <Input
+                    id="storageTemperature"
+                    type="number"
+                    step="0.1"
+                    value={formData.storage?.storageTemperature || ""}
+                    onChange={(e) => handleChange("storage", "storageTemperature", parseFloat(e.target.value) || 0)}
+                    className="border-2 focus:border-indigo-500 transition-colors"
+                    placeholder="Ex: 4.5"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="storageRoomId" className="flex items-center gap-2 font-semibold">
+                    🏢 ID de la chambre froide <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="storageRoomId"
+                    value={formData.storage?.storageRoomId || ""}
+                    onChange={(e) => handleChange("storage", "storageRoomId", e.target.value)}
+                    className="border-2 focus:border-indigo-500 transition-colors"
+                    placeholder="Ex: ROOM-001"
+                    required
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -655,38 +751,84 @@ useEffect(() => {
 
       case 6:
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>🚢 Export</CardTitle>
+          <Card className="border-l-4 border-l-teal-500">
+            <CardHeader className="bg-gradient-to-r from-teal-50 to-cyan-50">
+              <CardTitle className="flex items-center gap-3 text-teal-800">
+                <span className="text-2xl">🚢</span>
+                <div>
+                  <div>Export</div>
+                  <div className="text-sm font-normal text-teal-600">Informations d'exportation</div>
+                </div>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="loadingDate">Date de chargement</Label>
-                <Input
-                  id="loadingDate"
-                  type="datetime-local"
-                  value={formData.export?.loadingDate}
-                  onChange={(e) => handleChange("export", "loadingDate", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="containerId">ID du conteneur</Label>
-                <Input
-                  id="containerId"
-                  value={formData.export?.containerId}
-                  onChange={(e) => handleChange("export", "containerId", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="destination">Destination</Label>
-                <Input
-                  id="destination"
-                  value={formData.export?.destination}
-                  onChange={(e) => handleChange("export", "destination", e.target.value)}
-                  required
-                />
+            <CardContent className="space-y-6 pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="loadingDate" className="flex items-center gap-2 font-semibold">
+                    📅 Date de chargement <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="loadingDate"
+                    type="datetime-local"
+                    value={formData.export?.loadingDate || ""}
+                    onChange={(e) => handleChange("export", "loadingDate", e.target.value)}
+                    className="border-2 focus:border-teal-500 transition-colors"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="containerId" className="flex items-center gap-2 font-semibold">
+                    🗳️ ID du conteneur <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="containerId"
+                    value={formData.export?.containerId || ""}
+                    onChange={(e) => handleChange("export", "containerId", e.target.value)}
+                    placeholder="Ex: CONT-2024-001"
+                    className="border-2 focus:border-teal-500 transition-colors"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="exportDriverName" className="flex items-center gap-2 font-semibold">
+                    👨‍💼 Nom du chauffeur
+                  </Label>
+                  <Input
+                    id="exportDriverName"
+                    value={formData.export?.driverName || ""}
+                    onChange={(e) => handleChange("export", "driverName", e.target.value)}
+                    placeholder="Ex: Jean Dupont"
+                    className="border-2 focus:border-teal-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="exportVehicleId" className="flex items-center gap-2 font-semibold">
+                    🚛 ID du véhicule
+                  </Label>
+                  <Input
+                    id="exportVehicleId"
+                    value={formData.export?.vehicleId || ""}
+                    onChange={(e) => handleChange("export", "vehicleId", e.target.value)}
+                    placeholder="Ex: VH-2024-001"
+                    className="border-2 focus:border-teal-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="destination" className="flex items-center gap-2 font-semibold">
+                    🌍 Destination
+                  </Label>
+                  <Input
+                    id="destination"
+                    value={formData.export?.destination || ""}
+                    onChange={(e) => handleChange("export", "destination", e.target.value)}
+                    placeholder="Ex: Port de Marseille, France"
+                    className="border-2 focus:border-teal-500 transition-colors"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -694,46 +836,85 @@ useEffect(() => {
 
       case 7:
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>📦 Livraison</CardTitle>
+          <Card className="border-l-4 border-l-pink-500">
+            <CardHeader className="bg-gradient-to-r from-pink-50 to-rose-50">
+              <CardTitle className="flex items-center gap-3 text-pink-800">
+                <span className="text-2xl">📍</span>
+                <div>
+                  <div>Livraison</div>
+                  <div className="text-sm font-normal text-pink-600">Livraison finale au client</div>
+                </div>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="estimatedDeliveryDate">Date de livraison estimée</Label>
-                <Input
-                  id="estimatedDeliveryDate"
-                  type="datetime-local"
-                  value={formData.delivery?.estimatedDeliveryDate}
-                  onChange={(e) => handleChange("delivery", "estimatedDeliveryDate", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="clientName">Nom du client</Label>
-                <Input
-                  id="clientName"
-                  value={formData.delivery?.clientName}
-                  onChange={(e) => handleChange("delivery", "clientName", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="clientLocation">Localisation du client</Label>
-                <Input
-                  id="clientLocation"
-                  value={formData.delivery?.clientLocation}
-                  onChange={(e) => handleChange("delivery", "clientLocation", e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.delivery?.notes}
-                  onChange={(e) => handleChange("delivery", "notes", e.target.value)}
-                />
+            <CardContent className="space-y-6 pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="estimatedDeliveryDate" className="flex items-center gap-2 font-semibold">
+                    📅 Date de livraison estimée <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="estimatedDeliveryDate"
+                    type="datetime-local"
+                    value={formData.delivery?.estimatedDeliveryDate || ""}
+                    onChange={(e) => handleChange("delivery", "estimatedDeliveryDate", e.target.value)}
+                    className="border-2 focus:border-pink-500 transition-colors"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="actualDeliveryDate" className="flex items-center gap-2 font-semibold">
+                    ✅ Date de livraison réelle
+                  </Label>
+                  <Input
+                    id="actualDeliveryDate"
+                    type="datetime-local"
+                    value={formData.delivery?.actualDeliveryDate || ""}
+                    onChange={(e) => handleChange("delivery", "actualDeliveryDate", e.target.value)}
+                    className="border-2 focus:border-pink-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="clientName" className="flex items-center gap-2 font-semibold">
+                    🏢 Nom du client <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="clientName"
+                    value={formData.delivery?.clientName || ""}
+                    onChange={(e) => handleChange("delivery", "clientName", e.target.value)}
+                    placeholder="Ex: SuperMarché Bio SA"
+                    className="border-2 focus:border-pink-500 transition-colors"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="clientLocation" className="flex items-center gap-2 font-semibold">
+                    📍 Lieu de livraison
+                  </Label>
+                  <Input
+                    id="clientLocation"
+                    value={formData.delivery?.clientLocation || ""}
+                    onChange={(e) => handleChange("delivery", "clientLocation", e.target.value)}
+                    placeholder="Ex: Paris, France"
+                    className="border-2 focus:border-pink-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="deliveryNotes" className="flex items-center gap-2 font-semibold">
+                    📝 Notes de livraison
+                  </Label>
+                  <Textarea
+                    id="deliveryNotes"
+                    value={formData.delivery?.notes || ""}
+                    onChange={(e) => handleChange("delivery", "notes", e.target.value)}
+                    className="border-2 focus:border-pink-500 transition-colors"
+                    placeholder="Instructions spéciales, observations..."
+                    rows={3}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -745,103 +926,152 @@ useEffect(() => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-gray-50 rounded-lg shadow-md">
-      <div className="mb-8">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-purple-50 p-4">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2 flex items-center gap-3">
+            🥑 <span className="bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+              Nouveau Suivi d'Avocats
+            </span>
+          </h1>
+          <p className="text-gray-600 text-lg">Suivez le parcours de vos avocats de la ferme à la livraison</p>
+        </div>
 
-        <h2 className="text-3xl font-extrabold text-gray-800 mb-6">Nouvelle entrée de suivi d'avocats</h2>
-
+        {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-semibold text-gray-600">Étape {currentStep} sur 7</span>
-            <span className="text-sm text-gray-500">{Math.round((currentStep / 7) * 100)}% complété</span>
+            <h3 className="text-lg font-semibold text-gray-700">Progression du suivi</h3>
+            <span className="text-sm font-medium text-gray-600">
+              {getStepCompletionPercentage()}% complété
+            </span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-3">
-            <div 
-              className="bg-blue-500 h-3 rounded-full transition-all duration-300" 
+          <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+            <div
+              className="bg-gradient-to-r from-green-500 to-blue-500 h-3 rounded-full transition-all duration-500 ease-out"
               style={{ width: `${(currentStep / 7) * 100}%` }}
             ></div>
           </div>
-        </div>
 
-        <div className="flex items-center justify-between mb-8">
-          {[
-            { number: 1, label: "Récolte", icon: "📝" },
-            { number: 2, label: "Transport", icon: "🚛" },
-            { number: 3, label: "Tri", icon: "🏭" },
-            { number: 4, label: "Emballage", icon: "📦" },
-            { number: 5, label: "Stockage", icon: "❄️" },
-            { number: 6, label: "Export", icon: "🚢" },
-            { number: 7, label: "Livraison", icon: "📦" }
-          ].map((step) => (
-            <div 
-              key={step.number}
-              className={`flex flex-col items-center text-center space-y-1 ${
-                step.number === currentStep 
-                  ? "text-blue-600 font-bold" 
-                  : step.number < currentStep 
-                    ? "text-blue-400" 
-                    : "text-gray-400"
-              }`}
-            >
-              <div 
-                className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 ${
-                  step.number === currentStep 
-                    ? "bg-blue-500 text-white" 
-                    : step.number < currentStep 
-                      ? "bg-blue-100" 
-                      : "bg-gray-200"
-                }`}
+          {/* Step Navigator */}
+          <div className="grid grid-cols-7 gap-2">
+            {[1, 2, 3, 4, 5, 6, 7].map((step) => (
+              <button
+                key={step}
+                onClick={() => goToStep(step)}
+                className={`p-3 rounded-lg text-center transition-all duration-200 ${currentStep === step
+                  ? 'bg-blue-500 text-white shadow-lg scale-105'
+                  : formData.completedSteps?.includes(step)
+                    ? 'bg-green-500 text-white'
+                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                  }`}
               >
-                {step.icon}
-              </div>
-              <span className="text-xs font-medium">{step.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-8">
-        <div className="bg-white rounded-lg shadow-sm border p-8">
-          {renderStep()}
+                <div className="text-lg mb-1">{stepIcons[step]}</div>
+                <div className="text-xs font-medium">{stepTitles[step]}</div>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex justify-between pt-6">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={prevStep}
-            disabled={currentStep === 1 || isSubmitting}
-            className="min-w-[120px] bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
-          >
-            {currentStep === 1 ? "Début" : "Précédent"}
-          </Button>
-          {currentStep < 7 ? (
-            <Button 
-              type="button" 
-              onClick={nextStep}
-              disabled={isSubmitting}
-              className="min-w-[120px] bg-blue-500 hover:bg-blue-600 text-white"
-            >
-              Suivant
-            </Button>
-          ) : (
-            <Button 
-              type="submit"
-              disabled={isSubmitting}
-              className="min-w-[120px] bg-green-500 hover:bg-green-600 text-white"
-            >
-              {isSubmitting ? (
+        {/* Error Alert */}
+        {error && (
+          <Alert className="mb-6 border-red-200 bg-red-50">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-600">{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Auto-save Status */}
+        {(isSavingDraft || lastSaved) && (
+          <Alert className="mb-6 border-blue-200 bg-blue-50">
+            <Clock className="h-4 w-4" />
+            <AlertDescription className="flex items-center gap-2">
+              {isSavingDraft ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Enregistrement...
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Sauvegarde en cours...</span>
                 </>
               ) : (
-                "Enregistrer"
+                <>
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span>Dernière sauvegarde: {lastSaved ? new Date(lastSaved).toLocaleTimeString() : 'Jamais'}</span>
+                </>
               )}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-8">
+          {renderStep()}
+
+          {/* Navigation Buttons */}
+          <div className="flex justify-between items-center pt-8 border-t">
+            <Button
+              type="button"
+              onClick={prevStep}
+              disabled={currentStep === 1}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Précédent
             </Button>
-          )}
-        </div>
-      </form>
+
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                onClick={() => saveDraft()}
+                disabled={isSavingDraft}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                {isSavingDraft ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Sauvegarder brouillon
+              </Button>
+
+              {currentStep < 7 ? (
+                <Button
+                  type="button"
+                  onClick={nextStep}
+                  disabled={!validateCurrentStep()}
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600"
+                >
+                  Suivant
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || !validateCurrentStep()}
+                  className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4" />
+                  )}
+                  {isSubmitting ? "Enregistrement..." : "Finaliser le suivi"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </form>
+
+        {/* Validation Alert */}
+        {!validateCurrentStep() && (
+          <Alert className="mt-4 border-orange-200 bg-orange-50">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Veuillez remplir tous les champs obligatoires (*) pour continuer.
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
     </div>
   );
 }

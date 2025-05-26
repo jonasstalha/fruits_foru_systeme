@@ -131,11 +131,26 @@ function PDFViewer({ lotId, lotData, onClose }: PDFViewerProps) {
         doc.rect(x, y + 2, barWidth, 4, 'F');
 
         // Progress bar fill
-        const fillColor = percentage >= 80 ? [46, 204, 113] : percentage >= 60 ? [241, 196, 15] : [231, 76, 60];
-        doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
-        doc.rect(x, y + 2, filledWidth, 4, 'F');
+        // Ensure values are numbers and fallback to 0 if not
+        const safeX = typeof x === 'number' && !isNaN(x) ? x : 0;
+        const safeY = typeof y === 'number' && !isNaN(y) ? y : 0;
+        const safeFilledWidth = typeof filledWidth === 'number' && !isNaN(filledWidth) ? filledWidth : 0;
 
+        // Choose fill color based on percentage
+        const fillColor = percentage >= 80
+          ? [46, 204, 113]
+          : percentage >= 60
+            ? [241, 196, 15]
+            : [231, 76, 60];
+
+        doc.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+
+        // Draw filled progress bar
+        doc.rect(safeX, safeY + 2, safeFilledWidth, 4, 'F');
+
+        // Update y-position
         y += 12;
+
       };
 
       // Enhanced status indicator with better visuals

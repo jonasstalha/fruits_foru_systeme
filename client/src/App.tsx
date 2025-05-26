@@ -5,13 +5,13 @@ import NotFound from "@/pages/not-found";
 import { ProtectedRoute } from "@/components/protected-route";
 import DashboardPage from "./pages/dashboard-page";
 import NewEntryPage from "@/pages/new-entry-page";
-import ScanPage from "@/pages/scan-page";
+import ScanPage from "@/pages/tracability/scan-page";
 import LotDetailPage from "@/pages/lot-detail-page";
 import FarmsPage from "@/pages/farms-page";
 import UsersPage from "@/pages/users-page";
 import WarehousesPage from "@/pages/warehouses-page";
 import LotsPage from "@/pages/lots-page";
-import ReportsPage from "@/pages/reports-page";
+import ReportsPage from "@/pages/tracability/ReportsPage";
 import StatisticsPage from "@/pages/statistics-page";
 import MainLayout from "@/components/layout/main-layout";
 import { LoginPage } from "@/pages/login-page";
@@ -28,10 +28,11 @@ import newEntry from "./pages/recaption/newentry";
 import Horaires from "./pages/personnele/Horaires";
 import historiquedeconsomation from "./pages/production/historiquedeconsomation";
 import Archivagedesfacture from "@/pages/comptability/Archivagedesfacture"
-import templatest from "@/pages/comptability/templatest";
+import DocumentTemplates from "@/pages/comptability/DocumentTemplates";
 import FichedExpidition from "@/pages/logistique/FichedExpidition";
 import Rapportqualité from "@/pages/quality/Rapportqualité";
 import Archivagedescontroles from "@/pages/quality/Archivagedescontroles";
+import ReportsPagee from "@/pages/tracability/ReportsPage";
 
 function AuthenticatedRoutes() {
   return (
@@ -46,7 +47,6 @@ function AuthenticatedRoutes() {
         <Route path="/users" component={UsersPage} />
         <Route path="/warehouses" component={WarehousesPage} />
         <Route path="/reports" component={ReportsPage} />
-        {/* <Route path="/statistics" component={StatisticsPage} /> */}
         <Route path="/rapport-generating" component={RapportGenerating} />
         <Route path="/factures-templates" component={facturestemplates} />
         <Route path="/traceability" component={StatisticsPage} />
@@ -60,11 +60,11 @@ function AuthenticatedRoutes() {
         <Route path="/schedules" component={Horaires} />
         <Route path="/historiquedeconsomation" component={historiquedeconsomation} />
         <Route path="/Archivagedesfacture" component={Archivagedesfacture} />
-        <Route path="/Templates" component={templatest} />
+        <Route path="/Templates" component={DocumentTemplates} />
         <Route path="/fichedexpidition" component={FichedExpidition} />
         <Route path="/Rapportqualité" component={Rapportqualité} />
         <Route path="/Archivagedescontroles" component={Archivagedescontroles} />
-        {/* Add more routes here as needed */}
+        <Route path="/ReportsPage" component={ReportsPagee} />
         <Route component={NotFound} />
       </Switch>
     </MainLayout>
@@ -76,16 +76,15 @@ function App() {
     <AuthProvider>
       <Switch>
         <Route path="/login" component={LoginPage} />
-        <Route>
+        <Route path="*">
           <ProtectedRoute>
             <AuthenticatedRoutes />
           </ProtectedRoute>
         </Route>
       </Switch>
       <Toaster />
-      <SonnerToaster position="top-right" />
+      <SonnerToaster />
     </AuthProvider>
   );
 }
-
 export default App;

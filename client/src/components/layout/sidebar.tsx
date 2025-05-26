@@ -246,6 +246,15 @@ export default function Sidebar() {
       icon: <ArchiveRestore className="h-5 w-5 mr-2" />,
       path: "/Archivagedesfacture",
     },
+
+  ];
+     const clients = [
+    {
+      title: "ReportsPage",
+      icon: <LayoutTemplate className="h-5 w-5 mr-2" />,
+      path: "/ReportsPage",
+    },
+
   ];
 
   return (
@@ -281,6 +290,7 @@ export default function Sidebar() {
           {renderSection("Production", production, "production")}
           {renderSection("Personnel", personnelItems, "personnel")}
           {renderSection("Comptabilité", Comptabilité, "Comptabilité")}
+          {renderSection("clients", clients, "clients")}
           
         </nav>
 

@@ -190,13 +190,14 @@ export default function LotsPage() {
                   </div>
                 </div>
               </CardContent>
-              <CardFooter className="flex justify-end space-x-2">
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/lots/${lot.harvest.lotNumber}`}>
-                    Détails
-                  </Link>
-                </Button>
-              </CardFooter>
+      <CardFooter className="flex justify-end space-x-2">
+  <Button variant="outline" size="sm" asChild>
+    <Link href={`/lots/${lot.harvest.lotNumber}`}>
+      Détails
+    </Link>
+  </Button>
+</CardFooter>
+
             </Card>
           ))}
         </div>

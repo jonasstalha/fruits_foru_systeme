@@ -60,7 +60,7 @@ const registerSchema = z.object({
     "client",
     "logistique",
     "quality",
-    "coptability",
+    "comptability",
     "support",
     "production",
     "reception",]),
