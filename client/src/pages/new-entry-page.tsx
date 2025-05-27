@@ -10,8 +10,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2, Save, CheckCircle, Clock, ArrowLeft, ArrowRight, Package, Truck, Factory, Warehouse, Ship, MapPin } from "lucide-react";
 import { addAvocadoTracking, getFarms } from "@/lib/firebaseService";
 import { useNavigate } from "react-router-dom";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 
 export default function NewEntryPage() {
+
   const [farms, setFarms] = useState([]);
   const [error, setError] = useState('');
 
@@ -426,13 +428,37 @@ export default function NewEntryPage() {
                   <Label htmlFor="vehicleId" className="flex items-center gap-2 font-semibold">
                     🚚 ID du véhicule
                   </Label>
-                  <Input
-                    id="vehicleId"
-                    value={formData.transport?.vehicleId || ""}
-                    onChange={(e) => handleChange("transport", "vehicleId", e.target.value)}
-                    className="border-2 focus:border-blue-500 transition-colors"
-                    placeholder="Ex: VH-2024-001"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="vehicleId"
+                      value={formData.transport?.vehicleId || ""}
+                      onChange={(e) => handleChange("transport", "vehicleId", e.target.value)}
+                      className="border-2 focus:border-blue-500 transition-colors"
+                      placeholder="Ex: VH-2024-001"
+                      lang="ar"
+                      dir="rtl"
+                    />
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="px-3"
+                        >
+                          ع
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[600px]">
+                        <div className="h-[400px] w-full">
+                          <iframe
+                            src="https://www.lexilogos.com/keyboard/arabic.htm"
+                            className="w-full h-full border-none"
+                            title="Arabic Keyboard"
+                          />
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="temperature" className="flex items-center gap-2 font-semibold">
@@ -583,31 +609,20 @@ export default function NewEntryPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="boxId" className="flex items-center gap-2 font-semibold">
-                    📦 ID de la boîte <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="boxId"
-                    value={formData.boxId || ""}
-                    onChange={(e) => setFormData({ ...formData, boxId: e.target.value })}
-                    className="border-2 focus:border-amber-500 transition-colors"
-                    placeholder="Ex: BOX-2024-001"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="netWeight" className="flex items-center gap-2 font-semibold">
-                    ⚖️ Poids net (kg)
+                    ⚖️ Poids net (kg) <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="netWeight"
                     type="number"
+                    min="4"
+                    max="10"
                     step="0.1"
                     value={formData.packaging?.netWeight || ""}
                     onChange={(e) => handleChange("packaging", "netWeight", parseFloat(e.target.value) || 0)}
                     className="border-2 focus:border-amber-500 transition-colors"
-                    placeholder="Ex: 10.5"
+                    placeholder="Entre 4 et 10 kg"
+                    required
                   />
                 </div>
 
@@ -627,10 +642,10 @@ export default function NewEntryPage() {
 
                 <div className="space-y-2 md:col-span-2">
                   <Label className="flex items-center gap-2 font-semibold">
-                    📦 Types de boîtes
+                    📦 Type d'emballage <span className="text-red-500">*</span>
                   </Label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {["4kg", "6kg", "8kg", "10kg"].map((boxType) => (
+                  <div className="grid grid-cols-2 gap-4">
+                    {["Caisse plastique", "Box"].map((boxType) => (
                       <div key={boxType} className="flex items-center space-x-2">
                         <Checkbox
                           id={`boxType-${boxType}`}
@@ -652,8 +667,8 @@ export default function NewEntryPage() {
                   <Label className="flex items-center gap-2 font-semibold">
                     📏 Calibres
                   </Label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {["16", "18", "20", "22", "24", "26"].map((caliber) => (
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    {["12", "14", "16", "18", "20", "22", "24", "26", "28", "30"].map((caliber) => (
                       <div key={caliber} className="flex items-center space-x-2">
                         <Checkbox
                           id={`caliber-${caliber}`}
