@@ -10,6 +10,7 @@ import LotDetailPage from "@/pages/lot-detail-page";
 import FarmsPage from "@/pages/farms-page";
 import UsersPage from "@/pages/users-page";
 import WarehousesPage from "@/pages/warehouses-page";
+import WarehouseDetailPage from "@/pages/warehouse-detail-page";
 import LotsPage from "@/pages/lots-page";
 import ReportsPage from "@/pages/tracability/ReportsPage";
 import StatisticsPage from "@/pages/statistics-page";
@@ -33,6 +34,10 @@ import FichedExpidition from "@/pages/logistique/FichedExpidition";
 import Rapportqualité from "@/pages/quality/Rapportqualité";
 import Archivagedescontroles from "@/pages/quality/Archivagedescontroles";
 import ReportsPagee from "@/pages/tracability/ReportsPage";
+import FarmDetailPage from "@/pages/farm-detail-page";
+import DocumentArchive from "@/pages/archive/DocumentArchive";
+import NewProductPage from "@/pages/new-product-page";
+import { auth } from '@/lib/firebase';
 
 function AuthenticatedRoutes() {
   return (
@@ -40,12 +45,15 @@ function AuthenticatedRoutes() {
       <Switch>
         <Route path="/" component={DashboardPage} />
         <Route path="/new-entry" component={NewEntryPage} />
+        <Route path="/new-product" component={NewProductPage} />
         <Route path="/scan" component={ScanPage} />
         <Route path="/lots" component={LotsPage} />
         <Route path="/lots/:id" component={LotDetailPage} />
         <Route path="/farms" component={FarmsPage} />
+        <Route path="/farms/:id" component={FarmDetailPage} />
         <Route path="/users" component={UsersPage} />
         <Route path="/warehouses" component={WarehousesPage} />
+        <Route path="/warehouses/:id" component={WarehouseDetailPage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/rapport-generating" component={RapportGenerating} />
         <Route path="/factures-templates" component={facturestemplates} />
@@ -54,17 +62,18 @@ function AuthenticatedRoutes() {
         <Route path="/qualitycontrol" component={qualitycontrol} />
         <Route path="/personnelmanagement" component={personnelmanagement} />
         <Route path="/calculedeconsomation" component={calculedeconsomation} />
-        <Route path="/history" component={history} />
+        <Route path="/logistique/history" component={history} />
         <Route path="/reception" component={reception} />
         <Route path="/new" component={newEntry} />
         <Route path="/schedules" component={Horaires} />
         <Route path="/historiquedeconsomation" component={historiquedeconsomation} />
         <Route path="/Archivagedesfacture" component={Archivagedesfacture} />
         <Route path="/Templates" component={DocumentTemplates} />
-        <Route path="/fichedexpidition" component={FichedExpidition} />
+        <Route path="/logistique/fichedexpidition" component={FichedExpidition} />
         <Route path="/Rapportqualité" component={Rapportqualité} />
         <Route path="/Archivagedescontroles" component={Archivagedescontroles} />
         <Route path="/ReportsPage" component={ReportsPagee} />
+        <Route path="/archive" component={DocumentArchive} />
         <Route component={NotFound} />
       </Switch>
     </MainLayout>

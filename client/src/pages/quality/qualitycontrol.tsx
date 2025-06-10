@@ -252,49 +252,331 @@ export default function ProductQualityControlForm() {
     return (total / formData.palettes.length).toFixed(2);
   };
 
-  const handleGenerateReport = () => {
-    const doc = new jsPDF();
-
-    // Add title
-    doc.setFontSize(18);
-    doc.text("Product Quality Control Report", 10, 10);
-
-    // Add date
-    doc.setFontSize(12);
-    doc.text(`Date: ${formData.date}`, 10, 20);
-
-    // Add product details
-    doc.text(`Product: ${formData.product}`, 10, 30);
-    doc.text(`Variety: ${formData.variety}`, 10, 40);
-    doc.text(`Campaign: ${formData.campaign}`, 10, 50);
-    doc.text(`Client Lot: ${formData.clientLot}`, 10, 60);
-    doc.text(`Shipment Number: ${formData.shipmentNumber}`, 10, 70);
-    doc.text(`Packaging Type: ${formData.packagingType}`, 10, 80);
-    doc.text(`Category: ${formData.category}`, 10, 90);
-    doc.text(`Exporter Number: ${formData.exporterNumber}`, 10, 100);
-    doc.text(`Frequency: ${formData.frequency}`, 10, 110);
-
-    // Add palette details
-    doc.text("Palette Details:", 10, 120);
-    formData.palettes.forEach((palette, index) => {
-      doc.text(`Palette ${index + 1}:`, 10, 130 + index * 10);
-      doc.text(`  Package Count: ${palette.packageCount || "N/A"}`, 20, 140 + index * 10);
-      doc.text(`  Package Weight: ${palette.packageWeight || "N/A"}`, 20, 150 + index * 10);
-      doc.text(`  Shape Defect: ${palette.shapeDefect || "N/A"}%`, 20, 160 + index * 10);
-      doc.text(`  Color Defect: ${palette.colorDefect || "N/A"}%`, 20, 170 + index * 10);
+const handleGenerateReport = () => {
+  const doc = new jsPDF('landscape', 'mm', 'a4'); // Landscape orientation
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  
+  // Exact colors from image
+  const greenHeader = [76, 175, 80]; // Main green header
+  const lightGreen = [200, 230, 201]; // Light green for "Moyenne" column
+  const alternateRow = [245, 245, 245]; // Very light gray for alternate rows
+  const borderColor = [0, 0, 0]; // Black borders
+  
+  // Helper function to draw table exactly like image
+  const drawTable = (startY, sectionTitle, headers, data, hasAverageColumn = true) => {
+    let currentY = startY;
+    const rowHeight = 6; // Smaller row height like in image
+    const tableWidth = pageWidth - 20;
+    
+    // Calculate exact column widths like in image
+    let columnWidths;
+    if (hasAverageColumn) {
+      // First column wider, 25 narrow columns, average column medium
+      columnWidths = [55, ...Array(25).fill(8.8), 18]; // Total: 55 + (25*8.8) + 18 = 293
+    } else {
+      // For tolerance table - 3 columns
+      columnWidths = [120, 60, 60];
+    }
+    
+    // Scale to fit page width
+    const totalWidth = columnWidths.reduce((a, b) => a + b, 0);
+    const scaledWidths = columnWidths.map(width => (width / totalWidth) * tableWidth);
+    
+    // Draw main header row with section title
+    doc.setFillColor(...greenHeader);
+    doc.setDrawColor(...borderColor);
+    doc.setLineWidth(0.3);
+    doc.rect(10, currentY, tableWidth, rowHeight, 'FD');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    
+    let currentX = 10;
+    headers.forEach((header, index) => {
+      if (index === 0) {
+        // Section title in first column
+        doc.text(sectionTitle, currentX + 2, currentY + 4);
+      } else if (index === headers.length - 1 && hasAverageColumn) {
+        // "Moyenne" column with light green background
+        doc.setFillColor(...lightGreen);
+        doc.rect(currentX, currentY, scaledWidths[index], rowHeight, 'F');
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        const textWidth = doc.getTextWidth(header);
+        doc.text(header, currentX + (scaledWidths[index] / 2) - (textWidth / 2), currentY + 4);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+      } else if (index > 0) {
+        // Palette numbers
+        const textWidth = doc.getTextWidth(header);
+        doc.text(header, currentX + (scaledWidths[index] / 2) - (textWidth / 2), currentY + 4);
+      }
+      
+      // Draw vertical border
+      if (index > 0) {
+        doc.line(currentX, currentY, currentX, currentY + rowHeight);
+      }
+      currentX += scaledWidths[index];
     });
-
-    // Add results
-    doc.text("Results:", 10, 200);
-    doc.text(`Minimum Characteristics: ${results.minCharacteristics}`, 10, 210);
-    doc.text(`Total Defects: ${results.totalDefects}`, 10, 220);
-    doc.text(`Missing/Broken Grains: ${results.missingBrokenGrains}`, 10, 230);
-    doc.text(`Weight Conformity: ${results.weightConformity}`, 10, 240);
-    doc.text(`Is Conform: ${results.isConform ? "Yes" : "No"}`, 10, 250);
-
-    // Save the PDF
-    doc.save("Quality_Control_Report.pdf");
+    
+    // Right border
+    doc.line(currentX, currentY, currentX, currentY + rowHeight);
+    currentY += rowHeight;
+    
+    // Draw data rows
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    
+    data.forEach((row, rowIndex) => {
+      // Alternate row background (very subtle)
+      if (rowIndex % 2 === 1) {
+        doc.setFillColor(...alternateRow);
+        doc.rect(10, currentY, tableWidth, rowHeight, 'F');
+      }
+      
+      currentX = 10;
+      row.forEach((cell, cellIndex) => {
+        // Set text color
+        doc.setTextColor(0, 0, 0);
+        
+        // Handle average column coloring
+        if (cellIndex === row.length - 1 && hasAverageColumn) {
+          doc.setFillColor(...lightGreen);
+          doc.rect(currentX, currentY, scaledWidths[cellIndex], rowHeight, 'F');
+          doc.setFont('helvetica', 'bold');
+        } else {
+          doc.setFont('helvetica', 'normal');
+        }
+        
+        if (cellIndex === 0) {
+          // Parameter name - left aligned
+          doc.text(String(cell || ''), currentX + 2, currentY + 4);
+        } else {
+          // Data values - center aligned
+          const cellText = String(cell || '');
+          const textWidth = doc.getTextWidth(cellText);
+          doc.text(cellText, currentX + (scaledWidths[cellIndex] / 2) - (textWidth / 2), currentY + 4);
+        }
+        
+        // Draw vertical border
+        if (cellIndex > 0) {
+          doc.setDrawColor(...borderColor);
+          doc.line(currentX, currentY, currentX, currentY + rowHeight);
+        }
+        currentX += scaledWidths[cellIndex];
+      });
+      
+      // Right border and horizontal border
+      doc.line(currentX, currentY, currentX, currentY + rowHeight);
+      doc.line(10, currentY + rowHeight, 10 + tableWidth, currentY + rowHeight);
+      currentY += rowHeight;
+    });
+    
+    return currentY + 3;
   };
+
+  // PAGE 1 - Exact header reproduction
+  // Main green header bar
+  doc.setFillColor(...greenHeader);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.5);
+  doc.rect(10, 10, pageWidth - 20, 18, 'FD');
+  
+  // Logo section (left)
+  doc.setFillColor(255, 255, 255);
+  doc.rect(12, 12, 35, 14, 'FD');
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(6);
+  doc.setFont('helvetica', 'normal');
+  doc.text('FRESH FRUIT', 14, 16);
+  doc.text('EXPORT', 14, 19);
+  doc.text('LOGO', 14, 22);
+  
+  // Main title (center)
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RAPPORT QUALITÉ', (pageWidth / 2) - 32, 18);
+  doc.setFontSize(11);
+  doc.text('CONTROLE DU PRODUIT', (pageWidth / 2) - 35, 24);
+  
+  // Document info (right)
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.text('MO- Exp/061.1', pageWidth - 55, 14);
+  doc.text('Version 1', pageWidth - 55, 17);
+  doc.text('22/11/2024', pageWidth - 55, 20);
+  doc.text('Page 1/2', pageWidth - 55, 26);
+  
+  // Product information section with exact layout
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  
+  const infoY = 35;
+  // First row
+  doc.text('Date:', 10, infoY);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.date || '24/11/2024', 25, infoY);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.text('Produit:', 65, infoY);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.product || 'AVOCAT', 85, infoY);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.text('Variété:', 125, infoY);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.variety || 'FUERTE', 145, infoY);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.text('Campagne:', 185, infoY);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.campaign || '2024-2025', 210, infoY);
+  
+  // Second row
+  const infoY2 = infoY + 6;
+  doc.setFont('helvetica', 'normal');
+  doc.text('N° Expédition:', 10, infoY2);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.shipmentNumber || '46', 45, infoY2);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.text('Type d\'emballage:', 65, infoY2);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.packagingType || 'Carton PLU 210', 105, infoY2);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.text('Catégorie:', 155, infoY2);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.category || '1', 180, infoY2);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.text('N° d\'Exportateur:', 200, infoY2);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.exporterNumber || '180460', 245, infoY2);
+  
+  // Third row
+  const infoY3 = infoY2 + 6;
+  doc.setFont('helvetica', 'normal');
+  doc.text('Lot client:', 10, infoY3);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.clientLot || '2 401 017', 35, infoY3);
+  
+  doc.setFont('helvetica', 'normal');
+  doc.text('Fréquence:', 155, infoY3);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formData.frequency || '1 Carton/palette', 185, infoY3);
+
+  // Tables with exact data
+  let currentY = 55;
+  
+  // Palette headers (1-25)
+  const paletteHeaders = ['', ...Array.from({length: 25}, (_, i) => (i + 1).toString()), 'Moyenne'];
+  
+  // I) Controle Poids
+  const weightData = [
+    ['Poids du colis (kg)', '10,00', '10,00', '10,00', '10,00', '10,00', '10,15', '10,15', '10,15', '10,15', '10,15', '10,00', '10,00', '10,15', '10,15', '10,15', '10,15', '10,15', '10,15', '10,00', '10,15', '10,15', '4,12', '4,15', '10,00', '10,15', '9,95'],
+    ['Poids net requis (kg)', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00'],
+    ['Poids net (%)', '1,11', '1,11', '1,11', '1,11', '1,11', '1,28', '1,28', '1,28', '1,28', '1,28', '1,11', '1,11', '1,28', '1,28', '1,28', '1,28', '1,28', '1,28', '1,11', '1,28', '1,28', '2,89', '2,89', '1,11', '1,28', '1,24']
+  ];
+  
+  currentY = drawTable(currentY, 'I) Controle Poids', paletteHeaders, weightData);
+  
+  // II) Controle des caractéristiques minimales
+  const minCharData = [
+    ['Fermeté (kgf)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Pourriture (anthracnose) (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Matière étrangère (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Flétri (%)', '5,2', '5,2', '4,5', '6,5', '5,2', '6,2', '6,5', '6,5', '5,8', '5,8', '5,8', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,8', '5,8', '5,6'],
+    ['Endoderme durci (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Présence de parasite (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Attaque de parasite (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Température (°C)', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13,00'],
+    ['Odeur ou goût', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']
+  ];
+  
+  currentY = drawTable(currentY, 'II) Controle des caractéristiques minimales', paletteHeaders, minCharData);
+  
+  // III) Controle des caractéristiques spécifiques  
+  const specCharData = [
+    ['Défaut de forme', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Défaut de coloration', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Défaut d\'épiderme', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Homogénéité (C/NC)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Extrémité des grains', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Manque et cassés', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
+    ['Calibre', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14,00']
+  ];
+  
+  currentY = drawTable(currentY, 'III) Controle des caractéristiques spécifiques', paletteHeaders, specCharData);
+
+  // PAGE 2
+  doc.addPage('landscape');
+  currentY = 20;
+  
+  // Add page header
+  doc.setFillColor(...greenHeader);
+  doc.rect(10, 10, pageWidth - 20, 8, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RAPPORT QUALITÉ - CONTROLE DU PRODUIT (Suite)', (pageWidth / 2) - 70, 16);
+  doc.setFontSize(7);
+  doc.text('Page 2/2', pageWidth - 30, 16);
+
+  currentY = 25;
+  
+  // IV) Controle du produit fini
+  const finalProductData = [
+    ['Calibre', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14'],
+    ['Nombre de colis/palette', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48'],
+    ['État d\'emballage', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340'],
+    ['Présence d\'étiquetage', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '350', '358', '340', '340', '340', '340', '340', '342,5'],
+    ['Poids brut (kg)', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340'],
+    ['Poids net (kg)', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340'],
+    ['N° Lot interne', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '477', '340', '340', '340', '340', '340', '340', '346,5'],
+    ['Conformité de la palette', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340']
+  ];
+  
+  currentY = drawTable(currentY, 'IV) Controle du produit fini', paletteHeaders, finalProductData);
+  
+  // V) Tolérance
+  const toleranceHeaders = ['Tolérance', 'Résultat moyen', 'Conformité'];
+  const toleranceData = [
+    ['Contrôle des caractéristiques minimales', '0,00', 'Conforme'],
+    ['Paramètres de catégorie I (≤ 10 %)', '0,00', 'Conforme']
+  ];
+  
+  currentY = drawTable(currentY, 'V) Tolérance', toleranceHeaders, toleranceData, false);
+  
+  // Final result section
+  doc.setFillColor(...greenHeader);
+  doc.rect(10, currentY + 5, pageWidth - 20, 15, 'FD');
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('LOT CONFORME', (pageWidth / 2) - 25, currentY + 15);
+  
+  // Signature section
+  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  
+  const sigY = currentY + 30;
+  doc.text('Contrôleur: ________________________', pageWidth - 120, sigY);
+  doc.text('Date: ________________________', pageWidth - 120, sigY + 10);
+  doc.text('Signature:', pageWidth - 120, sigY + 20);
+  
+  // Signature box
+  doc.rect(pageWidth - 80, sigY + 22, 60, 15, 'D');
+
+  // Save the PDF
+  doc.save(`Quality_Control_Report_${formData.date || new Date().toISOString().split('T')[0]}.pdf`);
+};
 
   const tabTitles = [
     "Basic Info",

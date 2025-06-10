@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import FilterBar from "@/components/dashboard/filter-bar";
 import LotTable from "@/components/dashboard/lot-table";
-import { Plus, QrCode } from "lucide-react";
+import { Plus, QrCode, Archive, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatsData, Farm, Lot, FilterState, AvocadoTracking } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
@@ -145,6 +145,15 @@ export default function DashboardPage() {
           >
             <Link href="/scan">
               <QrCode className="h-6 w-6" />
+            </Link>
+          </Button>
+          <Button 
+            asChild 
+            className="h-14 w-14 rounded-full shadow-lg bg-indigo-600 hover:bg-indigo-700"
+            title="Historique des expéditions"
+          >
+            <Link href="/logistique/history">
+              <History className="h-6 w-6" />
             </Link>
           </Button>
           <Button 

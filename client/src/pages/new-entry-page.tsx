@@ -70,6 +70,8 @@ export default function NewEntryPage() {
       boxType: "case",
       boxTypes: [],
       calibers: [],
+      boxWeights: [],
+      paletteNumbers: [],
     },
     storage: {
       boxId: "",
@@ -609,35 +611,61 @@ export default function NewEntryPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="netWeight" className="flex items-center gap-2 font-semibold">
-                    ⚖️ Poids net (kg) <span className="text-red-500">*</span>
+                  <Label className="flex items-center gap-2 font-semibold">
+                    ⚖️ Poids net de la boîte <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    id="netWeight"
-                    type="number"
-                    min="4"
-                    max="10"
-                    step="0.1"
-                    value={formData.packaging?.netWeight || ""}
-                    onChange={(e) => handleChange("packaging", "netWeight", parseFloat(e.target.value) || 0)}
-                    className="border-2 focus:border-amber-500 transition-colors"
-                    placeholder="Entre 4 et 10 kg"
-                    required
-                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    {["4kg", "10kg"].map((weight) => (
+                      <div key={weight} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`boxWeight-${weight}`}
+                          checked={formData.packaging?.boxWeights?.includes(weight)}
+                          onCheckedChange={() => {
+                            const currentWeights = formData.packaging?.boxWeights || [];
+                            const newWeights = currentWeights.includes(weight)
+                              ? currentWeights.filter(w => w !== weight)
+                              : [...currentWeights, weight];
+                            handleChange("packaging", "boxWeights", newWeights);
+                          }}
+                        />
+                        <label
+                          htmlFor={`boxWeight-${weight}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          {weight}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="avocadoCount" className="flex items-center gap-2 font-semibold">
-                    🥑 Nombre d'avocats
+                  <Label className="flex items-center gap-2 font-semibold">
+                    📦 Numéro de palette <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    id="avocadoCount"
-                    type="number"
-                    value={formData.avocadoCount || ""}
-                    onChange={(e) => setFormData({ ...formData, avocadoCount: parseInt(e.target.value) || 0 })}
-                    className="border-2 focus:border-amber-500 transition-colors"
-                    placeholder="Ex: 48"
-                  />
+                  <div className="grid grid-cols-3 gap-4">
+                    {["220", "264", "90"].map((number) => (
+                      <div key={number} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`palette-${number}`}
+                          checked={formData.packaging?.paletteNumbers?.includes(number)}
+                          onCheckedChange={() => {
+                            const currentNumbers = formData.packaging?.paletteNumbers || [];
+                            const newNumbers = currentNumbers.includes(number)
+                              ? currentNumbers.filter(n => n !== number)
+                              : [...currentNumbers, number];
+                            handleChange("packaging", "paletteNumbers", newNumbers);
+                          }}
+                        />
+                        <label
+                          htmlFor={`palette-${number}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          {number}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="space-y-2 md:col-span-2">

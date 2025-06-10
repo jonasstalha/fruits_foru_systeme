@@ -23,14 +23,14 @@ import {
   ClipboardList,
   UserCog,
   Calendar,
-  LayoutTemplate ,
-  ArchiveRestore ,
+  LayoutTemplate,
+  ArchiveRestore,
   ShieldCheck,
   ChevronLeft,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"; // Import Tooltip components
-
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 export default function Sidebar() {
   const [location] = useLocation();
@@ -171,12 +171,12 @@ export default function Sidebar() {
      {
       title: "Fiche d Expidition",
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
-      path: "/fichedexpidition",
+      path: "/logistique/fichedexpidition",
     },
     {
       title: "Archife",
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
-      path: "/history",
+      path: "/logistique/history",
     },
   ];
 

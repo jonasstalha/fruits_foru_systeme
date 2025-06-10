@@ -60,8 +60,23 @@ export async function apiRequest<T>(
           return await firebaseService.getStats();
         }
         if (endpoint.startsWith("/pdf/")) {
-          // PDF generation is not implemented in Firebase yet
-          throw new Error("PDF generation is not implemented in Firebase yet");
+          // Use the existing PDF generator for the lot
+          const lotNumber = endpoint.split("/").pop();
+          if (lotNumber) {
+            const entries = await firebaseService.getAvocadoTrackingData();
+            const entry = entries.find(
+              (lot) => lot.harvest.lotNumber === lotNumber
+            );
+            if (!entry) {
+              throw new Error(`Lot ${lotNumber} not found`);
+            }
+            // Import the PDF generator directly
+            const { generateLotPDF } = await import('./pdfGenerator');
+            // Use the PDF generator to create a PDF blob
+            const pdfBlob = await generateLotPDF(entry);
+            return pdfBlob as unknown as T;
+          }
+          throw new Error("Invalid lot number for PDF generation");
         }
         throw new Error(`Endpoint ${endpoint} not implemented in Firebase service`);
 

@@ -1,20 +1,9 @@
 import React, { useState } from 'react';
 import QRCode from 'qrcode';
-import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
-import { initializeApp } from 'firebase/app';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { storage } from '@/lib/firebase';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyC0bMWINNGLLS6bfnK-hfRQwHFnBSJqMhI",
-  authDomain: "fruitsforyou-10acc.firebaseapp.com",
-  projectId: "fruitsforyou-10acc",
-  storageBucket: "fruitsforyou-10acc.firebasestorage.app",
-  messagingSenderId: "774475210821",
-  appId: "1:774475210821:web:b70ceab6562385fa5f032c",
-  measurementId: "G-6EMQ9TRW9N"
-};
-
-const app = initializeApp(firebaseConfig);
-const storage = getStorage(app);
+// Using shared Firebase instance from lib/firebase.ts
 
 export default function GenerateQR() {
   const [lotId, setLotId] = useState('');

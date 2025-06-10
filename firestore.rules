@@ -138,6 +138,30 @@ service cloud.firestore {
         && data.delivery.notes is string;
     }
 
+    // Categories collection
+    match /categories/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() 
+        && request.resource.data.name is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isAuthenticated() 
+        && resource.data.createdBy == request.auth.uid;
+    }
+    
+    // Documents collection
+    match /documents/{documentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() 
+        && request.resource.data.name is string
+        && request.resource.data.categoryId is string
+        && request.resource.data.url is string
+        && request.resource.data.uploadedAt is timestamp
+        && request.resource.data.uploadedBy == request.auth.uid;
+      allow update, delete: if isAuthenticated() 
+        && resource.data.uploadedBy == request.auth.uid;
+    }
+
     // Default deny all
     match /{document=**} {
       allow read, write: if false;
@@ -204,38 +228,83 @@ service cloud.firestore {
 
     // Boxes collection
     match /boxes/{boxId} {
-      allow read, create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.lastModified is timestamp;
+      allow update: if isAuthenticated() 
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.lastModified is timestamp;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Inventory collection rules
+    match /inventory/{itemId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+    }
+
+    // Consumption collection rules
+    match /consumption/{consumptionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+      allow list: if isAuthenticated();
+    }
+
+    // Add rules for consumption history
+    match /consumptionHistory/{historyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
+    }
+
+    // Items collection rules
+    match /items/{itemId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
       allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    // Box items collection
+    match /boxItems/{itemId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
     }
   }
 }
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Helper functions
+    // Helper function to check if user is authenticated
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    function isValidPDF() {
-      return request.resource.contentType == 'application/pdf'
-        && request.resource.size < 5 * 1024 * 1024; // 5MB limit
+    // Helper function to check if user owns the file
+    function isOwner(userId) {
+      return request.auth.uid == userId;
     }
-    
-    // Default deny all
+
+    // Helper function to check if request is from development server
+    function isDevelopmentServer() {
+      return request.origin.matches('http://localhost:[0-9]+');
+    }
+
+    // Documents folder rules
+    match /documents/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isOwner(userId) && isDevelopmentServer();
+    }
+
+    // Default deny all other access
     match /{allPaths=**} {
       allow read, write: if false;
-    }
-    
-    // PDF reports storage
-    match /reports/{fileName} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isValidPDF();
-    }
-    
-    // Temporary uploads
-    match /temp/{fileName} {
-      allow read, write: if isAuthenticated() && request.resource.size < 20 * 1024 * 1024;
     }
   }
 }

@@ -3,9 +3,9 @@ import { X, Search, Plus, ArrowLeft, Upload, Folder, FileText, File, Calendar, T
 import DocumentCard from '@/components/ui/document-card';
 import TagBadge from '@/components/ui/tag-badge';
 import StatCard from '@/components/ui/stat-card';
-import { createArchiveBox, addItemToBox } from '../../lib/firebaseService';
-import { collection, addDoc } from 'firebase/firestore';
-import { firestore, auth } from '@/lib/firebase';
+import { collection, addDoc, getDocs, query, where, orderBy, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject, uploadBytesResumable } from 'firebase/storage';
+import { firestore, storage, auth } from '@/lib/firebase';
 
 import {
   Card,
@@ -49,6 +49,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ArchiveItem {
   name: string;
@@ -66,6 +67,13 @@ interface ArchiveItem {
   lastModified: string;
   fileSize?: string;
   fileUrl?: string;
+  folderPath?: string;
+  boxWeights?: string[];
+  paletteNumbers?: string[];
+  boxTypes?: string[];
+  calibers?: string[];
+  avocadoCount?: number;
+  packagingDate?: string;
 }
 
 interface ArchiveBox {
@@ -79,6 +87,14 @@ interface ArchiveBox {
   lastModified: string;
   totalAmount?: number;
   tags?: string[];
+  userId: string;
+}
+
+interface UploadProgress {
+  fileName: string;
+  progress: number;
+  status: 'uploading' | 'completed' | 'error';
+  error?: string;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -127,12 +143,47 @@ const Archivagedesfacture: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>('date');
   const [filterOpen, setFilterOpen] = useState<boolean>(false);
   const [isBoxHovered, setIsBoxHovered] = useState<number | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, UploadProgress>>({});
+  const [isUploading, setIsUploading] = useState(false);
+  const [selectedBoxWeights, setSelectedBoxWeights] = useState<string[]>([]);
+  const [selectedPaletteNumbers, setSelectedPaletteNumbers] = useState<string[]>([]);
+  const [selectedBoxTypes, setSelectedBoxTypes] = useState<string[]>([]);
+  const [selectedCalibers, setSelectedCalibers] = useState<string[]>([]);
+  const [avocadoCount, setAvocadoCount] = useState<number>(0);
+  const [packagingDate, setPackagingDate] = useState<string>('');
+
+  // Add these constants for the selection options
+  const BOX_WEIGHTS = ['4kg', '10kg'];
+  const PALETTE_NUMBERS = ['220', '264', '90'];
+  const BOX_TYPES = ['Caisse plastique', 'Box'];
+  const CALIBERS = ['12', '14', '16', '18', '20', '22', '24', '26', '28', '30'];
 
   useEffect(() => {
-    const savedBoxes = localStorage.getItem('archiveBoxes');
-    if (savedBoxes) {
-      setBoxes(JSON.parse(savedBoxes));
-    }
+    const fetchBoxes = async () => {
+      try {
+        if (!auth.currentUser) return;
+        
+        const boxesRef = collection(firestore, 'boxes');
+        const q = query(
+          boxesRef,
+          where('userId', '==', auth.currentUser.uid),
+          orderBy('createdAt', 'desc')
+        );
+        
+        const querySnapshot = await getDocs(q);
+        const fetchedBoxes = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as ArchiveBox[];
+        
+        setBoxes(fetchedBoxes);
+      } catch (error) {
+        console.error('Error fetching boxes:', error);
+        showNotification('Erreur lors du chargement des boîtes', 'error');
+      }
+    };
+
+    fetchBoxes();
   }, []);
 
   useEffect(() => {
@@ -145,20 +196,26 @@ const Archivagedesfacture: React.FC = () => {
   };
 
   const handleCreateBox = async () => {
-    try {      const newBox: ArchiveBox = {
-        id: generateId(),
+    try {
+      if (!auth.currentUser) {
+        showNotification('Vous devez être connecté pour créer une boîte', 'error');
+        return;
+      }
+
+      const newBox: Omit<ArchiveBox, 'id'> = {
         title: newBoxTitle,
         items: [],
         color: COLORS[Math.floor(Math.random() * COLORS.length)],
         icon: ICONS[Math.floor(Math.random() * ICONS.length)],
         createdAt: new Date().toISOString(),
-        lastModified: new Date().toISOString()
+        lastModified: new Date().toISOString(),
+        userId: auth.currentUser.uid
       };
 
       const boxRef = await addDoc(collection(firestore, 'boxes'), {
         ...newBox,
-        userId: auth.currentUser?.uid,
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
+        lastModified: serverTimestamp()
       });
 
       setBoxes((prevBoxes) => [...prevBoxes, { ...newBox, id: boxRef.id }]);
@@ -169,28 +226,69 @@ const Archivagedesfacture: React.FC = () => {
       showNotification('Erreur lors de la création de la boîte', 'error');
     }
   };
-  const handleAddItemToBox = async (boxIndex: number, itemName: string, type: string = 'unknown', file?: File): Promise<void> => {
-    const updatedBoxes = [...boxes];    const newItem: ArchiveItem = {
-      name: itemName,
-      date: new Date().toLocaleDateString(),
-      type: type || itemName.split('.').pop() || 'unknown',
-      id: generateId(),
-      category: DOCUMENT_CATEGORIES[0].id, // Default to first category
-      status: 'pending' as const,
-      validationDate: '',
-      validatedBy: '',
-      lastModified: new Date().toISOString()
-    };
 
+  const handleAddItemToBox = async (boxIndex: number, name: string, type: string, file?: File): Promise<void> => {
     try {
-      const boxId = 'BOX_ID'; // Replace with the actual box ID from Firestore
-      await addItemToBox(boxId, itemName, type, file, 'USER_ID'); // Replace 'USER_ID' with the authenticated user's ID
+      const box = boxes[boxIndex];
+      let fileUrl = '';
+      let fileSize = '';
 
-      updatedBoxes[boxIndex].items.push(newItem);
-      setBoxes(updatedBoxes);
-      showNotification(`"${itemName}" ajouté avec succès!`, 'success');
+      if (file) {
+        const timestamp = Date.now();
+        const uniqueFileName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+        const storagePath = `boxes/${box.id}/${uniqueFileName}`;
+        const storageRef = ref(storage, storagePath);
+
+        const snapshot = await uploadBytes(storageRef, file, {
+          contentType: file.type,
+          customMetadata: {
+            userId: auth.currentUser?.uid || '',
+            boxId: box.id
+          }
+        });
+
+        fileUrl = await getDownloadURL(snapshot.ref);
+        fileSize = formatFileSize(file.size);
+      }
+
+      const newItem: ArchiveItem = {
+        name,
+        date: new Date().toLocaleDateString(),
+        type,
+        id: generateId(),
+        category: DOCUMENT_CATEGORIES[0].id,
+        status: 'pending',
+        validationDate: '',
+        validatedBy: '',
+        lastModified: new Date().toISOString(),
+        fileUrl,
+        fileSize,
+        boxWeights: selectedBoxWeights,
+        paletteNumbers: selectedPaletteNumbers,
+        boxTypes: selectedBoxTypes,
+        calibers: selectedCalibers,
+        avocadoCount,
+        packagingDate
+      };
+
+      // Update Firestore
+      const boxRef = doc(firestore, 'boxes', box.id);
+      const updatedItems = [...box.items, newItem];
+      await updateDoc(boxRef, {
+        items: updatedItems,
+        lastModified: serverTimestamp()
+      });
+
+      // Update local state
+      setBoxes(prevBoxes => {
+        const updatedBoxes = [...prevBoxes];
+        updatedBoxes[boxIndex].items = updatedItems;
+        return updatedBoxes;
+      });
+
+      showNotification('Document ajouté avec succès', 'success');
     } catch (error) {
-      console.error('Error adding item to box:', error);
+      console.error('Error adding item:', error);
       showNotification('Erreur lors de l\'ajout du document', 'error');
     }
   };
@@ -241,15 +339,193 @@ const Archivagedesfacture: React.FC = () => {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent, boxIndex: number): void => {
+  const handleFolderUpload = async (boxIndex: number, folder: FileSystemDirectoryEntry): Promise<void> => {
+    try {
+      setIsUploading(true);
+      const box = boxes[boxIndex];
+      const files: File[] = [];
+
+      // Recursively get all files from the folder
+      const getAllFiles = async (entry: FileSystemEntry): Promise<void> => {
+        if (entry.isFile) {
+          const file = await new Promise<File>((resolve) => {
+            (entry as FileSystemFileEntry).file(resolve);
+          });
+          files.push(file);
+        } else if (entry.isDirectory) {
+          const reader = (entry as FileSystemDirectoryEntry).createReader();
+          const entries = await new Promise<FileSystemEntry[]>((resolve) => {
+            reader.readEntries(resolve);
+          });
+          for (const entry of entries) {
+            await getAllFiles(entry);
+          }
+        }
+      };
+
+      await getAllFiles(folder);
+
+      // Upload each file with progress tracking
+      for (const file of files) {
+        const relativePath = file.webkitRelativePath || file.name;
+        const folderPath = relativePath.split('/').slice(0, -1).join('/');
+        
+        try {
+          // Create a unique file name
+          const timestamp = Date.now();
+          const uniqueFileName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+          const storagePath = `boxes/${box.id}/${folderPath}/${uniqueFileName}`;
+          const storageRef = ref(storage, storagePath);
+
+          // Set initial progress
+          setUploadProgress(prev => ({
+            ...prev,
+            [file.name]: {
+              fileName: file.name,
+              progress: 0,
+              status: 'uploading'
+            }
+          }));
+
+          // Upload with progress tracking
+          const uploadTask = uploadBytesResumable(storageRef, file, {
+            contentType: file.type,
+            customMetadata: {
+              userId: auth.currentUser?.uid || '',
+              boxId: box.id,
+              fileName: file.name,
+              folderPath: folderPath
+            }
+          });
+
+          // Track upload progress
+          uploadTask.on('state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(prev => ({
+                ...prev,
+                [file.name]: {
+                  fileName: file.name,
+                  progress,
+                  status: 'uploading'
+                }
+              }));
+            },
+            (error) => {
+              console.error('Upload error:', error);
+              setUploadProgress(prev => ({
+                ...prev,
+                [file.name]: {
+                  fileName: file.name,
+                  progress: 0,
+                  status: 'error',
+                  error: error.message
+                }
+              }));
+            },
+            async () => {
+              // Upload completed
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              
+              // Create new item in Firestore
+              const newItem: ArchiveItem = {
+                name: file.name,
+                date: new Date().toLocaleDateString(),
+                type: file.type.split('/')[1] || 'unknown',
+                id: generateId(),
+                category: DOCUMENT_CATEGORIES[0].id,
+                status: 'pending',
+                validationDate: '',
+                validatedBy: '',
+                lastModified: new Date().toISOString(),
+                fileUrl: downloadURL,
+                fileSize: formatFileSize(file.size),
+                folderPath: folderPath,
+                boxWeights: selectedBoxWeights,
+                paletteNumbers: selectedPaletteNumbers,
+                boxTypes: selectedBoxTypes,
+                calibers: selectedCalibers,
+                avocadoCount,
+                packagingDate
+              };
+
+              // Update Firestore
+              const boxRef = doc(firestore, 'boxes', box.id);
+              const updatedItems = [...box.items, newItem];
+              await updateDoc(boxRef, {
+                items: updatedItems,
+                lastModified: serverTimestamp()
+              });
+
+              // Update local state
+              setBoxes(prevBoxes => {
+                const updatedBoxes = [...prevBoxes];
+                updatedBoxes[boxIndex].items = updatedItems;
+                return updatedBoxes;
+              });
+
+              // Update progress
+              setUploadProgress(prev => ({
+                ...prev,
+                [file.name]: {
+                  fileName: file.name,
+                  progress: 100,
+                  status: 'completed'
+                }
+              }));
+            }
+          );
+        } catch (error) {
+          console.error('Error uploading file:', error);
+          setUploadProgress(prev => ({
+            ...prev,
+            [file.name]: {
+              fileName: file.name,
+              progress: 0,
+              status: 'error',
+              error: error instanceof Error ? error.message : 'Unknown error'
+            }
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error handling folder upload:', error);
+      showNotification('Erreur lors du téléchargement du dossier', 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const handleDrop = async (e: React.DragEvent, boxIndex: number): Promise<void> => {
     e.preventDefault();
     setIsDragging(false);
 
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      Array.from(files).forEach((file) => {
-        handleAddItemToBox(boxIndex, file.name, file.type.split('/')[1], file);
-      });
+    const items = e.dataTransfer.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        const entry = item.webkitGetAsEntry();
+        if (entry) {
+          if (entry.isDirectory) {
+            await handleFolderUpload(boxIndex, entry as FileSystemDirectoryEntry);
+          } else if (entry.isFile) {
+            const file = item.getAsFile();
+            if (file) {
+              await handleAddItemToBox(boxIndex, file.name, file.type.split('/')[1], file);
+            }
+          }
+        }
+      }
     }
   };
 
@@ -263,16 +539,40 @@ const Archivagedesfacture: React.FC = () => {
     });
   };
 
-  const deleteSelectedItems = () => {
+  const deleteSelectedItems = async () => {
     if (selectedBoxIndex === null) return;
     
-    const updatedBoxes = [...boxes];
-    updatedBoxes[selectedBoxIndex].items = updatedBoxes[selectedBoxIndex].items
-      .filter(item => !selectedItems.includes(item.id));
-    
-    setBoxes(updatedBoxes);
-    setSelectedItems([]);
-    showNotification(`${selectedItems.length} document(s) supprimé(s)`, 'warning');
+    try {
+      const box = boxes[selectedBoxIndex];
+      const itemsToDelete = box.items.filter(item => selectedItems.includes(item.id));
+      
+      // Delete files from Storage
+      for (const item of itemsToDelete) {
+        if (item.fileUrl) {
+          const storageRef = ref(storage, item.fileUrl);
+          await deleteObject(storageRef);
+        }
+      }
+
+      // Update Firestore
+      const boxRef = doc(firestore, 'boxes', box.id);
+      const updatedItems = box.items.filter(item => !selectedItems.includes(item.id));
+      await updateDoc(boxRef, {
+        items: updatedItems,
+        lastModified: serverTimestamp()
+      });
+
+      // Update local state
+      const updatedBoxes = [...boxes];
+      updatedBoxes[selectedBoxIndex].items = updatedItems;
+      setBoxes(updatedBoxes);
+      setSelectedItems([]);
+      
+      showNotification(`${selectedItems.length} document(s) supprimé(s)`, 'warning');
+    } catch (error) {
+      console.error('Error deleting items:', error);
+      showNotification('Erreur lors de la suppression des documents', 'error');
+    }
   };
 
   const renderIcon = (iconName: string) => {
@@ -300,6 +600,198 @@ const Archivagedesfacture: React.FC = () => {
       return <File className="h-5 w-5 text-amber-500" />;
     return <File className="h-5 w-5 text-gray-500" />;
   };
+
+  const UploadProgressIndicator = () => {
+    const uploads = Object.values(uploadProgress);
+    if (uploads.length === 0) return null;
+
+    return (
+      <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 w-80">
+        <h3 className="font-medium mb-2">Upload Progress</h3>
+        <div className="space-y-2">
+          {uploads.map((upload) => (
+            <div key={upload.fileName} className="space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="truncate">{upload.fileName}</span>
+                <span>{upload.progress.toFixed(0)}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full ${
+                    upload.status === 'error' ? 'bg-red-500' :
+                    upload.status === 'completed' ? 'bg-green-500' :
+                    'bg-blue-500'
+                  }`}
+                  style={{ width: `${upload.progress}%` }}
+                />
+              </div>
+              {upload.status === 'error' && (
+                <p className="text-xs text-red-500">{upload.error}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const handleBoxWeightToggle = (weight: string) => {
+    setSelectedBoxWeights(prev => 
+      prev.includes(weight)
+        ? prev.filter(w => w !== weight)
+        : [...prev, weight]
+    );
+  };
+
+  const handlePaletteNumberToggle = (number: string) => {
+    setSelectedPaletteNumbers(prev => 
+      prev.includes(number)
+        ? prev.filter(n => n !== number)
+        : [...prev, number]
+    );
+  };
+
+  const handleBoxTypeToggle = (boxType: string) => {
+    setSelectedBoxTypes(prev => 
+      prev.includes(boxType)
+        ? prev.filter(t => t !== boxType)
+        : [...prev, boxType]
+    );
+  };
+
+  const handleCaliberToggle = (caliber: string) => {
+    setSelectedCalibers(prev => 
+      prev.includes(caliber)
+        ? prev.filter(c => c !== caliber)
+        : [...prev, caliber]
+    );
+  };
+
+  const renderSelectionFields = () => (
+    <div className="space-y-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <Label htmlFor="packagingDate" className="flex items-center gap-2 font-semibold">
+            📅 Date d'emballage <span className="text-red-500">*</span>
+          </Label>
+          <Input
+            id="packagingDate"
+            type="datetime-local"
+            value={packagingDate}
+            onChange={(e) => setPackagingDate(e.target.value)}
+            className="border-2 focus:border-amber-500 transition-colors"
+            required
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="avocadoCount" className="flex items-center gap-2 font-semibold">
+            🥑 Nombre d'avocats
+          </Label>
+          <Input
+            id="avocadoCount"
+            type="number"
+            value={avocadoCount}
+            onChange={(e) => setAvocadoCount(parseInt(e.target.value) || 0)}
+            className="border-2 focus:border-amber-500 transition-colors"
+            placeholder="Ex: 48"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2 font-semibold">
+            ⚖️ Poids net de la boîte <span className="text-red-500">*</span>
+          </Label>
+          <div className="grid grid-cols-2 gap-4">
+            {BOX_WEIGHTS.map((weight) => (
+              <div key={weight} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`boxWeight-${weight}`}
+                  checked={selectedBoxWeights.includes(weight)}
+                  onCheckedChange={() => handleBoxWeightToggle(weight)}
+                />
+                <label
+                  htmlFor={`boxWeight-${weight}`}
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  {weight}
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2 font-semibold">
+            📦 Numéro de palette <span className="text-red-500">*</span>
+          </Label>
+          <div className="grid grid-cols-3 gap-4">
+            {PALETTE_NUMBERS.map((number) => (
+              <div key={number} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`palette-${number}`}
+                  checked={selectedPaletteNumbers.includes(number)}
+                  onCheckedChange={() => handlePaletteNumberToggle(number)}
+                />
+                <label
+                  htmlFor={`palette-${number}`}
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  {number}
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <Label className="flex items-center gap-2 font-semibold">
+            📦 Type d'emballage <span className="text-red-500">*</span>
+          </Label>
+          <div className="grid grid-cols-2 gap-4">
+            {BOX_TYPES.map((boxType) => (
+              <div key={boxType} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`boxType-${boxType}`}
+                  checked={selectedBoxTypes.includes(boxType)}
+                  onCheckedChange={() => handleBoxTypeToggle(boxType)}
+                />
+                <label
+                  htmlFor={`boxType-${boxType}`}
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  {boxType}
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <Label className="flex items-center gap-2 font-semibold">
+            📏 Calibres
+          </Label>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {CALIBERS.map((caliber) => (
+              <div key={caliber} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`caliber-${caliber}`}
+                  checked={selectedCalibers.includes(caliber)}
+                  onCheckedChange={() => handleCaliberToggle(caliber)}
+                />
+                <label
+                  htmlFor={`caliber-${caliber}`}
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Calibre {caliber}
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   if (selectedBoxIndex !== null && boxes[selectedBoxIndex]) {
     const currentBox = boxes[selectedBoxIndex];
@@ -353,6 +845,8 @@ const Archivagedesfacture: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {renderSelectionFields()}
 
         <div className="mb-6">
           <Tabs defaultValue="all" className="w-full">
@@ -1016,7 +1510,13 @@ const Archivagedesfacture: React.FC = () => {
                     amount: formData.get('amount') ? parseFloat(formData.get('amount') as string) : undefined,
                     validationDate: formData.get('validationDate') as string || undefined,
                     validatedBy: '',
-                    lastModified: new Date().toISOString()
+                    lastModified: new Date().toISOString(),
+                    boxWeights: selectedBoxWeights,
+                    paletteNumbers: selectedPaletteNumbers,
+                    boxTypes: selectedBoxTypes,
+                    calibers: selectedCalibers,
+                    avocadoCount,
+                    packagingDate
                   };
 
                   handleAddItemToBox(
@@ -1127,6 +1627,7 @@ const Archivagedesfacture: React.FC = () => {
             </Dialog>
           )}
         </div>
+        <UploadProgressIndicator />
       </div>
     );
   }

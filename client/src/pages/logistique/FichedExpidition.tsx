@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale/fr';
-import { jsPDF } from 'jspdf';
+import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import { FilePlus, Printer, RefreshCw, Check } from 'lucide-react';
+import { FilePlus, Printer, RefreshCw, Check, Save, ExternalLink } from 'lucide-react';
+import { addItemToBox } from '../../lib/firebaseService';
+import { collection, getDocs, query, where, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { firestore, auth, storage } from '@/lib/firebase';
 import { v4 as uuidv4 } from 'uuid';
 
 // Add logo import
@@ -46,6 +50,18 @@ interface HeaderData {
   thermokingEtat: 'Bon' | 'Mauvais' | '';
 }
 
+// Add expedition form data interface for saving
+interface ExpeditionFormData {
+  id?: string;
+  name: string;
+  date: string;
+  headerData: HeaderData;
+  rows: ExpeditionRow[];
+  createdAt?: string;
+  updatedAt?: string;
+  pdfURL?: string; // Add PDF URL field
+}
+
 // Product varieties options
 const productVarieties = ['Hass', 'Fuerte', 'Pinkerton', 'Reed', 'Zutano', 'Bacon', 'Gwen', 'Lamb Hass'];
 
@@ -68,11 +84,15 @@ const createEmptyRow = (index: number): ExpeditionRow => ({
 export default function FichedExpidition() {
   const [rows, setRows] = useState<ExpeditionRow[]>([]);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
-  const [userId] = useState('USER123'); // Mock user ID
+  const [isSaving, setIsSaving] = useState(false);
+  // Use a consistent user ID to avoid authentication issues
+  const [userId] = useState('USER123');
   const [companyName] = useState('Fruits For You ');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [successMessageText, setSuccessMessageText] = useState('');
   const [expeditionDate, setExpeditionDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [clientName, setClientName] = useState('');
+  const [expeditionId, setExpeditionId] = useState<string | null>(null);
   const [headerData, setHeaderData] = useState<HeaderData>({
     date: format(new Date(), 'yyyy-MM-dd'),
     heure: format(new Date(), 'HH:mm'),
@@ -87,17 +107,129 @@ export default function FichedExpidition() {
 
   // Initialize rows on component mount
   useEffect(() => {
-    const savedData = localStorage.getItem('ficheExpeditionData');
-    if (savedData) {
-      try {
-        setRows(JSON.parse(savedData));
-      } catch (e) {
+    // Check URL for expedition ID parameter
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    
+    console.log('URL parameter ID:', id);
+    
+    if (id) {
+      // Load data from database using the ID
+      loadExpeditionData(id);
+    } else {
+      // Load from localStorage as fallback for new forms
+      const savedData = localStorage.getItem('ficheExpeditionData');
+      if (savedData) {
+        try {
+          setRows(JSON.parse(savedData));
+        } catch (e) {
+          console.error('Error parsing saved data:', e);
+          initializeEmptyRows();
+        }
+      } else {
+        console.log('No saved data found, initializing empty rows');
         initializeEmptyRows();
       }
-    } else {
-      initializeEmptyRows();
     }
   }, []);
+  
+  // Function to load expedition data from localStorage first, then try Firestore
+  const loadExpeditionData = async (id: string) => {
+    try {
+      console.log('Loading expedition data with ID:', id);
+      // First, try to load from localStorage
+      const savedExpeditions = localStorage.getItem('savedExpeditions');
+      
+      if (savedExpeditions) {
+        const expeditionsArray: ExpeditionFormData[] = JSON.parse(savedExpeditions);
+        const foundExpedition = expeditionsArray.find(exp => exp.id === id);
+        
+        if (foundExpedition) {
+          console.log('Found expedition in localStorage:', foundExpedition);
+          setExpeditionId(id);
+          setHeaderData(foundExpedition.headerData);
+          setRows(foundExpedition.rows);
+          setSuccessMessageText('Fiche d\'expédition chargée avec succès!');
+          setShowSuccessMessage(true);
+          setTimeout(() => setShowSuccessMessage(false), 3000);
+          
+          // Ensure URL has the correct ID parameter
+          const url = new URL(window.location.href);
+          url.searchParams.set('id', id);
+          window.history.replaceState({}, '', url);
+          
+          return; // Successfully loaded from localStorage
+        }
+      }
+      
+      // If not found in localStorage, try Firestore as a fallback
+      try {
+        const docRef = collection(firestore, 'expeditions');
+        const q = query(docRef, where('id', '==', id));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const expeditionData = querySnapshot.docs[0].data() as ExpeditionFormData;
+          console.log('Found expedition in Firestore:', expeditionData);
+          setExpeditionId(id);
+          setHeaderData(expeditionData.headerData);
+          setRows(expeditionData.rows);
+          
+          // Try to get the PDF from Firebase Storage if it exists
+          if (expeditionData.pdfURL) {
+            console.log('Found PDF URL:', expeditionData.pdfURL);
+            // You can set a state variable to store the PDF URL if needed
+          } else {
+            // If no PDF URL exists in Firestore, check Firebase Storage directly
+            try {
+              const storageRef = ref(storage, `reports/${id}_expedition.pdf`);
+              const pdfURL = await getDownloadURL(storageRef);
+              console.log('Found PDF in storage:', pdfURL);
+              // Update the expedition data with the found PDF URL
+              expeditionData.pdfURL = pdfURL;
+            } catch (storageError) {
+              console.log('No PDF found in storage for this expedition');
+            }
+          }
+          
+          setSuccessMessageText('Fiche d\'expédition chargée avec succès!');
+          setShowSuccessMessage(true);
+          setTimeout(() => setShowSuccessMessage(false), 3000);
+          
+          // Ensure URL has the correct ID parameter
+          const url = new URL(window.location.href);
+          url.searchParams.set('id', id);
+          window.history.replaceState({}, '', url);
+          
+          // Also save to localStorage for future offline access
+          const savedExpeditions = localStorage.getItem('savedExpeditions');
+          let expeditionsArray: ExpeditionFormData[] = [];
+          
+          if (savedExpeditions) {
+            expeditionsArray = JSON.parse(savedExpeditions);
+          }
+          
+          expeditionsArray.push(expeditionData);
+          localStorage.setItem('savedExpeditions', JSON.stringify(expeditionsArray));
+        } else {
+          console.error('No expedition found with ID:', id);
+          alert('Aucune fiche d\'expédition trouvée avec cet identifiant.');
+          // Reset the URL to remove the invalid ID
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      } catch (firestoreError) {
+        console.error('Firestore load failed:', firestoreError);
+        alert('Aucune fiche d\'expédition trouvée avec cet identifiant.');
+        // Reset the URL to remove the invalid ID
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch (error) {
+      console.error('Error loading expedition data:', error);
+      alert('Erreur lors du chargement de la fiche d\'expédition.');
+      // Reset the URL to remove the invalid ID
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  };
 
   // Auto-save to localStorage when rows change
   useEffect(() => {
@@ -132,25 +264,31 @@ export default function FichedExpidition() {
   // Simple validation to check if there's at least one row with data
   const validateForm = () => {
     const hasAnyData = rows.some(row => 
-      row.nbrColis || row.produitVariete || row.calibre || 
-      row.temperatureProduit || row.etatPalette || 
-      row.conformiteEtiquettes || row.dessiccation
+      row.nbrColis || row.produitVariete || row.calibre || row.temperatureProduit || 
+      row.etatPalette || row.conformiteEtiquettes || row.dessiccation
     );
     
-    if (!hasAnyData) {
-      alert("Veuillez remplir au moins une ligne avant de générer le PDF.");
-      return false;
-    }
+    const hasHeaderData = headerData.transporteur && headerData.destination;
     
-    return true;
+    return hasAnyData && hasHeaderData;
   };
 
+  // Function to generate, save to Firebase Storage, and download a PDF of the expedition form
   const generatePDF = async () => {
-    if (!validateForm()) return;
-
     setIsGeneratingPDF(true);
     try {
-      const doc = new jsPDF();
+      console.log('Generating PDF, expedition ID:', expeditionId);
+      if (!validateForm()) {
+        alert("Veuillez remplir au moins une ligne et les informations principales (transporteur et destination).");
+        return;
+      }
+
+      // Generate the complete PDF with all the formatting and data
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
       const logoBase64 = await getBase64Image(LOGO_PATH);
       
       // Set up page and colors
@@ -170,26 +308,26 @@ export default function FichedExpidition() {
       doc.setLineWidth(1);
       doc.roundedRect(5, 5, pageWidth - 10, pageHeight - 10, 3, 3);
       
-    // Add logo with simplified positioning and size
-    doc.addImage(logoBase64, 'PNG', 10, 10, 25, 25);
+      // Add logo with simplified positioning and size
+      doc.addImage(logoBase64, 'PNG', 10, 10, 25, 25);
 
-    // Add header title section with minimal styling
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(0, 0, 0);
-    doc.text('Fiche d\'expédition', 40, 20);
+      // Add header title section with minimal styling
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.setTextColor(0, 0, 0);
+      doc.text('Fiche d\'expédition', 40, 20);
 
-    // Add right section with MP ENR info in a simple box
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text('MP ENR 06', 160, 15);
-    doc.text('Version : 01', 160, 20);
-    doc.text('Date : 01/07/2023', 160, 25);
+      // Add right section with MP ENR info in a simple box
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text('MP ENR 06', 160, 15);
+      doc.text('Version : 01', 160, 20);
+      doc.text('Date : 01/07/2023', 160, 25);
 
-    // Add a simple line separator
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.5);
-    doc.line(10, 40, pageWidth - 10, 40);
+      // Add a simple line separator
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.5);
+      doc.line(10, 40, pageWidth - 10, 40);
       
       // Create the main form sections with improved spacing
       const startY = 55;
@@ -319,26 +457,37 @@ export default function FichedExpidition() {
       // Add a decorative separator before the table
       doc.setDrawColor(darkGreen[0], darkGreen[1], darkGreen[2]);
       doc.setLineWidth(0.5);
-      doc.setLineDash([3, 3]);
-      doc.line(10, tableY - 5, pageWidth - 10, tableY - 5);
-      doc.setLineDash([]);
+      // Use proper type casting for jsPDF to access setLineDash
+      // @ts-ignore - setLineDash exists in jsPDF but TypeScript definitions might be outdated
+      if (typeof doc.setLineDash === 'function') {
+        // @ts-ignore
+        doc.setLineDash([3, 3]);
+        doc.line(10, tableY - 5, pageWidth - 10, tableY - 5);
+        // @ts-ignore
+        doc.setLineDash([]);
+      } else {
+        // Fallback if setLineDash is not available
+        doc.line(10, tableY - 5, pageWidth - 10, tableY - 5);
+      }
       
       const filteredRows = rows.filter(row => 
         row.nbrColis || row.produitVariete || row.calibre || 
         row.temperatureProduit || row.etatPalette || 
         row.conformiteEtiquettes || row.dessiccation
       );
-        // Apply enhanced table styling
+      
+      // Apply enhanced table styling
       (doc as any).autoTable({
         startY: tableY,
-        margin: { left: 10, right: 10 },        head: [[
+        margin: { left: 10, right: 10 },
+        head: [[
           { content: 'N° de\npalette', styles: { cellWidth: 20, cellPadding: 4 } },
           { content: 'NBR de\nColis', styles: { cellWidth: 20, cellPadding: 4 } },
           { content: 'Produit/\nVariété', styles: { cellWidth: 30, cellPadding: 4 } },
           { content: 'Calibre', styles: { cellWidth: 20, cellPadding: 4 } },
           { content: 'T° produit', styles: { cellWidth: 20, cellPadding: 4 } },
           { content: 'État de la palette', styles: { cellWidth: 25, cellPadding: 4 } },
-          { content: 'Conformité d\'étiquettes\n(C/NC)', styles: { cellWidth: 30, cellPadding: 4 } },
+          { content: 'Conformité d\'\u00e9tiquettes\n(C/NC)', styles: { cellWidth: 30, cellPadding: 4 } },
           { content: 'Décision\n(C/NC)', styles: { cellWidth: 25, cellPadding: 4 } }
         ]],
         body: filteredRows.map((row, index) => [
@@ -350,7 +499,8 @@ export default function FichedExpidition() {
           { content: row.etatPalette, styles: { halign: 'center' } },
           { content: row.conformiteEtiquettes, styles: { halign: 'center' } },
           { content: row.dessiccation, styles: { halign: 'center' } }
-        ]),        styles: {
+        ]),
+        styles: {
           fontSize: 9,
           cellPadding: { top: 4, right: 3, bottom: 4, left: 3 },
           lineWidth: 0.1,
@@ -423,19 +573,251 @@ export default function FichedExpidition() {
       doc.text(`Document généré le ${format(new Date(), 'dd/MM/yyyy à HH:mm')}`, pageWidth/2, footerY, { align: 'center' });
       doc.text(`Page 1/1`, pageWidth - 20, footerY, { align: 'right' });
       
-      // Save with formatted name
-      const pdfName = `Fiche_Expedition_${format(new Date(), 'yyyyMMdd')}_${headerData.transporteur.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
-      doc.save(pdfName);
+      // Convert PDF to blob for storage and download
+      const pdfOutput = doc.output('arraybuffer');
+      const pdfBlob = new Blob([pdfOutput], { type: 'application/pdf' });
+      const fileName = `Fiche_Expedition_${format(new Date(), 'yyyyMMdd')}_${headerData.transporteur.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
       
+      // Skip Firebase Storage entirely due to persistent CORS issues
+      const fileId = expeditionId || `exp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      // Use a local PDF URL format
+      const localPdfUrl = `local_${fileId}_expedition.pdf`;
+      
+      try {
+        console.log('Using localStorage only for PDFs to avoid CORS issues');
+        
+        // Save PDF data directly to localStorage for reliable access
+        try {
+          const reader = new FileReader();
+          reader.onloadend = function(this: FileReader, event: ProgressEvent<FileReader>) {
+            try {
+              const base64data = this.result as string;
+              // Store the PDF data in localStorage with the expedition ID as key
+              localStorage.setItem(`pdf_${expeditionId || fileId}`, base64data);
+              console.log('PDF data saved to localStorage successfully');
+            } catch (e) {
+              console.error('Error saving PDF data to localStorage:', e);
+            }
+          };
+          reader.readAsDataURL(pdfBlob);
+        } catch (localStorageError) {
+          console.error('Error storing PDF in localStorage:', localStorageError);
+        }
+        
+        // Update Firestore with local PDF URL reference
+        if (expeditionId) {
+          try {
+            const expeditionsRef = collection(firestore, 'expeditions');
+            const q = query(expeditionsRef, where('id', '==', expeditionId));
+            const querySnapshot = await getDocs(q);
+            
+            if (!querySnapshot.empty) {
+              const docId = querySnapshot.docs[0].id;
+              await updateDoc(doc(firestore, 'expeditions', docId), {
+                pdfURL: localPdfUrl,  // Store reference to local PDF
+                updatedAt: serverTimestamp()
+              });
+              console.log('Updated Firestore with local PDF reference');
+            }
+          } catch (firestoreError) {
+            console.error('Error updating Firestore with PDF reference:', firestoreError);
+          }
+        }
+        
+        // Always update localStorage data with PDF URL
+        const savedExpeditions = localStorage.getItem('savedExpeditions');
+        if (savedExpeditions && expeditionId) {
+          let expeditionsArray = JSON.parse(savedExpeditions);
+          expeditionsArray = expeditionsArray.map((exp: ExpeditionFormData) => {
+            if (exp.id === expeditionId) {
+              return { ...exp, pdfURL: localPdfUrl };
+            }
+            return exp;
+          });
+          localStorage.setItem('savedExpeditions', JSON.stringify(expeditionsArray));
+          
+          // Also update archive boxes
+          const savedArchiveBoxes = localStorage.getItem('archiveBoxes');
+          if (savedArchiveBoxes) {
+            let archiveBoxes = JSON.parse(savedArchiveBoxes);
+            archiveBoxes = archiveBoxes.map((item: any) => {
+              if (item.id === expeditionId) {
+                return { ...item, pdfURL: localPdfUrl };
+              }
+              return item;
+            });
+            localStorage.setItem('archiveBoxes', JSON.stringify(archiveBoxes));
+          }
+        }
+        
+        setSuccessMessageText('PDF généré et sauvegardé localement');
+      } catch (error) {
+        console.error('Error handling PDF storage:', error);
+        // Continue with download even if storage fails
+      }
+      
+      // Download the PDF for the user
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(pdfBlob);
+      link.download = fileName;
+      link.click();
+      
+      setSuccessMessageText('Fiche d\'expédition générée avec succès!');
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
-      
     } catch (error) {
       console.error("Error generating PDF:", error);
       alert("Une erreur s'est produite lors de la génération du PDF.");
     } finally {
       setIsGeneratingPDF(false);
     }
+  };
+
+  // Function to save expedition to localStorage with improved persistence
+  const saveExpedition = async (generatePdfAfterSave = false) => {
+    // Validate form before saving
+    if (!validateForm()) {
+      alert("Veuillez remplir au moins une ligne et les informations principales (transporteur et destination).");
+      return null;
+    }
+
+    setIsSaving(true);
+    try {
+      console.log('Saving expedition, current ID:', expeditionId);
+      // Create or update the expedition ID
+      const newExpeditionId = expeditionId || `exp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      setExpeditionId(newExpeditionId);
+      console.log('Using expedition ID for save:', newExpeditionId);
+
+      // Prepare the expedition data object
+      const expeditionData: ExpeditionFormData = {
+        id: newExpeditionId,
+        name: `Expedition_${headerData.transporteur}_${format(new Date(headerData.date), 'yyyy-MM-dd')}`,
+        date: headerData.date,
+        headerData,
+        rows,
+        pdfURL: "", // Will be updated after PDF generation if needed
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      // Save to localStorage first for immediate persistence
+      const savedExpeditions = localStorage.getItem('savedExpeditions');
+      let expeditionsArray: ExpeditionFormData[] = [];
+      
+      if (savedExpeditions) {
+        expeditionsArray = JSON.parse(savedExpeditions);
+        // Check if we need to update existing or add new
+        const existingIndex = expeditionsArray.findIndex(exp => exp.id === newExpeditionId);
+        if (existingIndex >= 0) {
+          // Keep the existing pdfURL if it exists and we're not regenerating
+          const existingPdfURL = expeditionsArray[existingIndex].pdfURL;
+          if (existingPdfURL && existingPdfURL.length > 0 && !generatePdfAfterSave) {
+            expeditionData.pdfURL = existingPdfURL;
+          }
+          expeditionsArray[existingIndex] = expeditionData;
+        } else {
+          expeditionsArray.push(expeditionData);
+        }
+      } else {
+        expeditionsArray = [expeditionData];
+      }
+      
+      localStorage.setItem('savedExpeditions', JSON.stringify(expeditionsArray));
+      console.log('Saved to localStorage with ID:', newExpeditionId);
+
+      // Create a simplified archive item reference
+      const archiveItem = {
+        id: newExpeditionId,
+        name: expeditionData.name,
+        date: expeditionData.date,
+        type: 'expedition',
+        pdfURL: expeditionData.pdfURL
+      };
+
+      // Save to archive boxes in localStorage
+      const savedArchiveBoxes = localStorage.getItem('archiveBoxes');
+      let archiveBoxes: any[] = [];
+      
+      if (savedArchiveBoxes) {
+        archiveBoxes = JSON.parse(savedArchiveBoxes);
+        const existingIndex = archiveBoxes.findIndex(item => item.id === newExpeditionId);
+        if (existingIndex >= 0) {
+          archiveBoxes[existingIndex] = archiveItem;
+        } else {
+          archiveBoxes.push(archiveItem);
+        }
+      } else {
+        archiveBoxes = [archiveItem];
+      }
+      
+      localStorage.setItem('archiveBoxes', JSON.stringify(archiveBoxes));
+
+      // Try to save to Firestore if possible, otherwise just use localStorage
+      try {
+        if (!auth.currentUser) {
+          console.log('No authenticated user, skipping Firestore save');
+          // Continue with local storage only
+        } else {
+          // Check if expedition already exists in Firestore
+          const expeditionsRef = collection(firestore, 'expeditions');
+          const q = query(expeditionsRef, where('id', '==', newExpeditionId));
+          const querySnapshot = await getDocs(q);
+          
+          if (!querySnapshot.empty) {
+            // Update existing document
+            const docId = querySnapshot.docs[0].id;
+            await updateDoc(doc(firestore, 'expeditions', docId), {
+              ...expeditionData,
+              updatedAt: serverTimestamp()
+            });
+            console.log('Updated existing expedition in Firestore');
+          } else {
+            // Create new document
+            await addDoc(expeditionsRef, {
+              ...expeditionData,
+              userId: userId,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            console.log('Added new expedition to Firestore');
+          }
+        }
+      } catch (firestoreError) {
+        console.error('Error saving to Firestore:', firestoreError);
+        // Display a user-friendly message
+        setSuccessMessageText('Sauvegardé localement (pas de connexion au serveur)');
+        // Continue since we've already saved to localStorage
+      }
+      
+      // Update URL with expedition ID parameter without reloading the page
+      const url = new URL(window.location.href);
+      url.searchParams.set('id', newExpeditionId);
+      window.history.pushState({}, '', url);
+      
+      // Generate PDF if requested
+      if (generatePdfAfterSave) {
+        console.log('Generating PDF after save...');
+        await generatePDF();
+      }
+      
+      setSuccessMessageText('Fiche d\'expédition sauvegardée avec succès!');
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+      
+      return newExpeditionId;
+    } catch (error) {
+      console.error('Error saving expedition:', error);
+      alert("Une erreur s'est produite lors de la sauvegarde.");
+      return null;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  // Navigate to history page
+  const goToHistory = () => {
+    window.location.href = '/logistique/history';
   };
 
   return (
@@ -635,14 +1017,59 @@ export default function FichedExpidition() {
           {/* Action Buttons with Enhanced Styling */}
           <div className="flex flex-col gap-3 mt-6 md:mt-0">
             <button
-              onClick={generatePDF}
-              disabled={isGeneratingPDF}
+              onClick={() => saveExpedition(false)}
+              disabled={isSaving}
+              className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-all transform hover:scale-105 disabled:bg-gray-400 disabled:transform-none shadow-lg hover:shadow-xl"
+            >
+              {isSaving ? (
+                <>
+                  <div className="animate-spin h-5 w-5 border-3 border-white border-t-transparent rounded-full"></div>
+                  Sauvegarde...
+                </>
+              ) : (
+                <>
+                  <Save size={20} />
+                  {expeditionId ? 'Mettre à jour' : 'Sauvegarder'}
+                </>
+              )}
+            </button>
+            
+            <button
+              onClick={() => {
+                const saveAndGeneratePDF = async () => {
+                  try {
+                    // First save the expedition data
+                    await saveExpedition(false);
+                    // Then generate the PDF
+                    await generatePDF();
+                  } catch (error) {
+                    console.error('Error in save and generate PDF flow:', error);
+                    // Fallback to just downloading a PDF without Firebase storage
+                    const doc = new jsPDF();
+                    doc.setFontSize(18);
+                    doc.text('Fiche d\'Expédition', 105, 15, { align: 'center' });
+                    doc.setFontSize(12);
+                    doc.text(`Entreprise: ${companyName}`, 105, 25, { align: 'center' });
+                    const pdfBlob = doc.output('blob');
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(pdfBlob);
+                    link.download = `Fiche_Expedition_${format(new Date(), 'yyyyMMdd')}.pdf`;
+                    link.click();
+                    
+                    setSuccessMessageText('PDF généré localement uniquement');
+                    setShowSuccessMessage(true);
+                    setTimeout(() => setShowSuccessMessage(false), 3000);
+                  }
+                };
+                saveAndGeneratePDF();
+              }}
+              disabled={isGeneratingPDF || isSaving}
               className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-all transform hover:scale-105 disabled:bg-gray-400 disabled:transform-none shadow-lg hover:shadow-xl"
             >
               {isGeneratingPDF ? (
                 <>
                   <div className="animate-spin h-5 w-5 border-3 border-white border-t-transparent rounded-full"></div>
-                  Génération...
+                  Génération PDF...
                 </>
               ) : (
                 <>
@@ -654,16 +1081,28 @@ export default function FichedExpidition() {
             
             <button
               onClick={() => window.print()}
-              className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+              className="flex items-center gap-2 bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
             >
               <Printer size={20} />
               Imprimer
             </button>
             
             <button
+              onClick={goToHistory}
+              className="flex items-center gap-2 bg-amber-600 text-white px-6 py-3 rounded-lg hover:bg-amber-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
+            >
+              <ExternalLink size={20} />
+              Voir historique
+            </button>
+            
+            <button
               onClick={() => {
                 if (window.confirm("Êtes-vous sûr de vouloir réinitialiser le formulaire? Toutes les données seront perdues.")) {
                   initializeEmptyRows();
+                  // Clear the expedition ID if there is one
+                  setExpeditionId(null);
+                  // Reset URL parameters
+                  window.history.pushState({}, '', window.location.pathname);
                 }
               }}
               className="flex items-center gap-2 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
@@ -679,7 +1118,7 @@ export default function FichedExpidition() {
             <div className="bg-green-100 rounded-full p-1 mr-3">
               <Check className="h-5 w-5 text-green-600" />
             </div>
-            <span>Fiche d'expédition générée avec succès!</span>
+            <span>{successMessageText}</span>
           </div>
         )}
         

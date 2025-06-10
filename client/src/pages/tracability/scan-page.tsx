@@ -132,37 +132,57 @@ export default function ScanPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  // Handle QR code generation - Fixed version
-  const handleGenerateQR = (type: 'view' | 'download' = 'download') => {
-    if (!scannedLot) {
-      toast({
-        title: "Erreur",
-        description: "Aucun lot sélectionné pour générer le QR code",
-        variant: "destructive",
-      });
-      return;
+  // Handle QR code generation - Auto download version
+const handleGenerateQR = async (type: 'view' | 'download' = 'download') => {
+  if (!scannedLot) {
+    toast({
+      title: "Erreur",
+      description: "Aucun lot sélectionné pour générer le QR code", 
+      variant: "destructive",
+    });
+    return;
+  }
+
+  try {
+    // Generate QR code data based on type
+    const qrData = generateQRData(scannedLot, type);
+    setGeneratedQRData(qrData);
+    setQrType(type);
+    setShowQRModal(true);
+
+    toast({
+      title: "QR Code généré",
+      description: `QR Code ${type === 'download' ? 'de téléchargement' : 'de consultation'} créé pour le lot ${scannedLot.harvest.lotNumber}`,
+    });
+
+    // Only attempt download if PDF generation is available
+    if (type === 'download') {
+      try {
+        // Check if PDF endpoint is available
+        const checkResponse = await fetch(`/api/check-pdf/${scannedLot.harvest.lotNumber}`);
+        if (checkResponse.ok) {
+          handleDownloadPDF();
+        } else {
+          toast({
+            title: "PDF non disponible",
+            description: "La génération de PDF n'est pas disponible pour le moment",
+            variant: "warning",
+          });
+        }
+      } catch (pdfError) {
+        console.error('PDF availability check failed:', pdfError);
+        // Continue showing QR code even if PDF check fails
+      }
     }
-
-    try {
-      const qrData = generateQRData(scannedLot, type);
-      setGeneratedQRData(qrData);
-      setQrType(type);
-      setShowQRModal(true);
-
-      toast({
-        title: "QR Code généré",
-        description: `QR Code ${type === 'download' ? 'de téléchargement' : 'de consultation'} créé pour le lot ${scannedLot.harvest.lotNumber}`,
-      });
-    } catch (error) {
-      console.error('Error generating QR:', error);
-      toast({
-        title: "Erreur QR Code",
-        description: "Impossible de générer le QR Code. Veuillez réessayer.",
-        variant: "destructive",
-      });
-    }
-  };
-
+  } catch (error) {
+    console.error('Error generating QR:', error);
+    toast({
+      title: "Erreur QR Code",
+      description: "Impossible de générer le QR Code. Veuillez réessayer.",
+      variant: "destructive",
+    });
+  }
+};
   // Handle QR code sharing
   const handleShareQR = async () => {
     if (!scannedLot) return;
@@ -522,10 +542,6 @@ export default function ScanPage() {
           </CardContent>
           {scannedLot && (
             <CardFooter className="flex justify-end gap-2 p-6 pt-0">
-              <Button variant="outline" onClick={() => handleGenerateQR('view')}>
-                <QrCode className="h-4 w-4 mr-2" />
-                QR Consultation
-              </Button>
               <Button variant="outline" onClick={() => handleGenerateQR('download')}>
                 <Download className="h-4 w-4 mr-2" />
                 QR Téléchargement

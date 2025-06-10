@@ -14,9 +14,10 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { Farm, Lot, AvocadoTracking, StatsData } from "@shared/schema";
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from './firebase';
 import { generateLotPDF } from './pdfGenerator';
+import { uploadFileToStorage } from './firebaseHelpers';
 
 // Helper function to convert Firestore timestamp to ISO string
 const timestampToISOString = (timestamp: any) => {
@@ -493,24 +494,53 @@ export const createArchiveBox = async (title: string, color: string, icon: strin
 };
 
 // Add a function to add an item to an archive box
-export const addItemToBox = async (boxId: string, itemName: string, type: string, file: File | undefined, userId: string): Promise<string> => {
+export const addItemToBox = async (
+  boxId: string,
+  itemName: string,
+  type: string,
+  file: File | undefined,
+  userId: string
+): Promise<string> => {
   if (!userId) {
     throw new Error('User ID is required to add an item to a box.');
   }
 
   let fileUrl = '';
   if (file) {
-    const storageRef = ref(storage, `boxes/${boxId}/${file.name}`);
-    await uploadBytes(storageRef, file);
-    fileUrl = await getDownloadURL(storageRef);
+    try {
+      const timestamp = Date.now();
+      const randomId = Math.floor(Math.random() * 10000000000000);
+      const safeFileName = `${timestamp}_${randomId}.${file.name.split('.').pop()}`;
+      
+      // Upload file to storage
+      fileUrl = await uploadFileToStorage(file, boxId, itemName, type, userId);
+      console.log('File uploaded successfully:', fileUrl);
+    } catch (error) {
+      console.error('Storage upload error:', error);
+      throw new Error('Failed to upload file. Please try again.');
+    }
   }
 
-  const docRef = await addDoc(collection(db, `boxes/${boxId}/blocks`), {
-    name: itemName,
-    type,
-    fileUrl,
-    userId,
-    createdAt: serverTimestamp(),
-  });
-  return docRef.id;
+  try {
+    const docRef = await addDoc(collection(db, 'boxItems'), {
+      boxId,
+      name: itemName,
+      type,
+      fileUrl,
+      userId,
+      createdAt: serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error('Firestore add error:', error);
+    if (fileUrl && file) {
+      try {
+        const fileRef = ref(storage, fileUrl);
+        await deleteObject(fileRef);
+      } catch (deleteError) {
+        console.error('Failed to clean up orphaned file:', deleteError);
+      }
+    }
+    throw error;
+  }
 };

@@ -1,17 +1,16 @@
-// Firebase configuration and initialization
-import { initializeApp } from "firebase/app";
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  getDocs, 
-  doc, 
-  updateDoc, 
+// Firebase imports
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
   deleteDoc,
   serverTimestamp,
   query,
   orderBy
 } from "firebase/firestore";
+import { firestore as db } from "@/lib/firebase"; // Import shared firestore instance
 import { useState, useEffect } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -23,13 +22,13 @@ import {
   CardTitle,
   CardFooter,
 } from "@/components/ui/card";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
-  DialogFooter 
+  DialogFooter
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -41,29 +40,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, MapPin, Edit2, Trash2 } from "lucide-react";
+import { Plus, MapPin, Edit2, Trash2, Eye } from "lucide-react";
+import { useLocation } from "wouter";
 
-// Firebase configuration - replace with your config
-const firebaseConfig = {
-  apiKey: "AIzaSyC0bMWINNGLLS6bfnK-hfRQwHFnBSJqMhI",
-  authDomain: "fruitsforyou-10acc.firebaseapp.com",
-  projectId: "fruitsforyou-10acc",
-  storageBucket: "fruitsforyou-10acc.firebasestorage.app",
-  messagingSenderId: "774475210821",
-  appId: "1:774475210821:web:b70ceab6562385fa5f032c",
-  measurementId: "G-6EMQ9TRW9N"
-};
-
-// Initialize Firebase outside of the component
-// This prevents re-initialization on each render
-let firebaseApp;
-try {
-  firebaseApp = initializeApp(firebaseConfig);
-} catch (error) {
-  // Use existing app instance if it was already initialized
-  firebaseApp = initializeApp(firebaseConfig, "[DEFAULT]");
-}
-const db = getFirestore(firebaseApp);
+// Using shared Firebase instance from lib/firebase.ts
+// No need to initialize Firebase again here
 
 // Define farm schema
 const farmSchema = z.object({
@@ -81,12 +62,13 @@ type Farm = z.infer<typeof farmSchema> & {
 };
 
 const FarmsPage = () => {
+  const [location, setLocation] = useLocation();
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [selectedFarm, setSelectedFarm] = useState<Farm | null>(null);
   const [farms, setFarms] = useState<Farm[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Add farm form
   const addFarmForm = useForm<z.infer<typeof farmSchema>>({
     resolver: zodResolver(farmSchema),
@@ -122,7 +104,7 @@ const FarmsPage = () => {
       const farmsCollection = collection(db, "farms");
       const farmQuery = query(farmsCollection, orderBy("createdAt", "desc"));
       const querySnapshot = await getDocs(farmQuery);
-      
+
       const farmsData: Farm[] = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
@@ -136,7 +118,7 @@ const FarmsPage = () => {
           updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : new Date().toISOString()
         };
       });
-      
+
       setFarms(farmsData);
     } catch (error) {
       console.error("Error fetching farms:", error);
@@ -149,7 +131,7 @@ const FarmsPage = () => {
     try {
       // Generate farm code
       const farmCode = `F-${String(farms.length + 1).padStart(3, '0')}`;
-      
+
       // Add doc to Firebase
       const docRef = await addDoc(collection(db, "farms"), {
         ...values,
@@ -157,7 +139,7 @@ const FarmsPage = () => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      
+
       // Add the new farm to the local state
       const newFarm: Farm = {
         ...values,
@@ -166,7 +148,7 @@ const FarmsPage = () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      
+
       setFarms(prevFarms => [newFarm, ...prevFarms]);
       addFarmForm.reset();
       setOpenAddDialog(false);
@@ -189,24 +171,24 @@ const FarmsPage = () => {
 
   const onEditFarmSubmit = async (values: z.infer<typeof farmSchema>) => {
     if (!selectedFarm) return;
-    
+
     try {
       const farmRef = doc(db, "farms", selectedFarm.id);
       await updateDoc(farmRef, {
         ...values,
         updatedAt: serverTimestamp()
       });
-      
+
       const updatedFarm: Farm = {
         ...selectedFarm,
         ...values,
         updatedAt: new Date().toISOString()
       };
-      
-      setFarms(farms.map(farm => 
+
+      setFarms(farms.map(farm =>
         farm.id === selectedFarm.id ? updatedFarm : farm
       ));
-      
+
       setOpenEditDialog(false);
       setSelectedFarm(null);
     } catch (error) {
@@ -221,6 +203,10 @@ const FarmsPage = () => {
     } catch (error) {
       console.error("Error deleting farm:", error);
     }
+  };
+
+  const handleViewFarmDetails = (farmId: string) => {
+    setLocation(`/farms/${farmId}`);
   };
 
   return (
@@ -320,17 +306,17 @@ const FarmsPage = () => {
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-xl">{farm.name}</CardTitle>
                     <div className="flex space-x-2">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="text-blue-500 hover:text-blue-700"
                         onClick={() => handleEditFarm(farm)}
                       >
                         <Edit2 className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="text-red-500 hover:text-red-700"
                         onClick={() => handleDeleteFarm(farm.id)}
                       >
@@ -347,11 +333,10 @@ const FarmsPage = () => {
                   <p className="text-neutral-600">{farm.description}</p>
                   <div className="mt-4 flex items-center justify-between">
                     <span className="text-sm font-mono text-neutral-500">{farm.code}</span>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      farm.active 
-                        ? "bg-green-100 text-green-800" 
+                    <span className={`px-2 py-1 text-xs rounded-full ${farm.active
+                        ? "bg-green-100 text-green-800"
                         : "bg-red-100 text-red-800"
-                    }`}>
+                      }`}>
                       {farm.active ? "Active" : "Inactive"}
                     </span>
                   </div>
@@ -359,6 +344,17 @@ const FarmsPage = () => {
                 <CardFooter className="flex justify-between text-sm text-neutral-500">
                   <span>Créé le {new Date(farm.createdAt).toLocaleDateString()}</span>
                   <span>Modifié le {new Date(farm.updatedAt).toLocaleDateString()}</span>
+                </CardFooter>
+                <CardFooter className="pt-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => handleViewFarmDetails(farm.id)}
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    Détails
+                  </Button>
                 </CardFooter>
               </Card>
             ))
