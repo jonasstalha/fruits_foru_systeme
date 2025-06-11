@@ -21,25 +21,190 @@ import {
   Calendar,
   User,
   Building,
-  FileText
+  FileText,
+  Share2
 } from "lucide-react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { getAvocadoTrackingData } from "@/lib/queryClient";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+
+interface AvocadoTrackingData {
+  harvest: {
+    lotNumber: string;
+    harvestDate: string;
+    farmLocation: string;
+    variety: string;
+  };
+  transport: {
+    arrivalDateTime: string;
+    vehicleId?: string;
+    driverName?: string;
+  };
+  sorting: {
+    sortingDate: string;
+    qualityGrade?: string;
+    rejectedQuantity?: number;
+  };
+  packaging: {
+    packagingDate: string;
+    netWeight?: number;
+    packagingType?: string;
+  };
+  storage: {
+    entryDate: string;
+    storageZone?: string;
+    temperature?: number;
+  };
+  export: {
+    loadingDate: string;
+    destination?: string;
+    containerNumber?: string;
+  };
+  delivery: {
+    actualDeliveryDate: string;
+    customerName?: string;
+  };
+}
 
 export default function LotDetailPage() {
-  const { id } = useParams(); // Get lot number from URL
-  
-  // Fetch all lots data and find the specific lot
-  const { data: lots = [], isLoading: loading, error } = useQuery({
-    queryKey: ['avocadoTracking'],
-    queryFn: getAvocadoTrackingData()
-  });
+  const { lotNumber: rawLotNumber } = useParams<{ lotNumber: string }>();
+  const [lotData, setLotData] = useState<AvocadoTrackingData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [currentLotNumber, setCurrentLotNumber] = useState<string | null>(null);
 
-  // Find the specific lot by lot number
-  const lot = lots.find(l => l.harvest.lotNumber === id);
+  // Function to clean lot number
+  const cleanLotNumber = (lotNumber: string): string => {
+    if (!lotNumber) return '';
+    // Remove any non-alphanumeric characters except hyphens
+    return lotNumber.replace(/[^a-zA-Z0-9-]/g, '');
+  };
 
-  const getProgressPercentage = (lot) => {
+  // Function to share the lot URL
+  const handleShare = async () => {
+    try {
+      const shareData = {
+        title: `Lot d'Avocat ${lotData?.harvest.lotNumber}`,
+        text: `Informations de traçabilité pour le lot ${lotData?.harvest.lotNumber}`,
+        url: window.location.href
+      };
+
+      if (navigator.share && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        alert('Lien copié dans le presse-papiers');
+      }
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  };
+
+  useEffect(() => {
+    const fetchLotData = async () => {
+      if (!rawLotNumber) {
+        setErrorMessage('Numéro de lot manquant');
+        setIsLoading(false);
+        return;
+      }
+
+      const lotNumber = cleanLotNumber(rawLotNumber);
+      console.log('Cleaned lot number:', lotNumber);
+      setCurrentLotNumber(lotNumber);
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      try {
+        // Try different variations of the lot number
+        const variations = [
+          lotNumber,
+          lotNumber.toUpperCase(),
+          lotNumber.toLowerCase(),
+          `LOT-${lotNumber}`,
+          `LOT${lotNumber}`,
+          `lot-${lotNumber}`,
+          `lot${lotNumber}`,
+          lotNumber.replace(/-/g, ''),
+          lotNumber.replace(/-/g, '').toUpperCase(),
+          lotNumber.replace(/-/g, ' '),
+          lotNumber.replace(/-/g, ' ').toUpperCase(),
+          lotNumber.replace(/-/g, ' ').toLowerCase(),
+          `LOT ${lotNumber}`,
+          `LOT ${lotNumber.replace(/-/g, ' ')}`,
+          lotNumber.replace(/(\d+)-(\d+)-(\d+)/, '$1$2$3'),
+          lotNumber.replace(/(\d+)-(\d+)-(\d+)/, '$1-$2-$3')
+        ];
+        console.log('Trying lot number variations:', variations);
+
+        // First try the lots collection with multiple field checks
+        const lotsQueries = [
+          query(collection(db, 'lots'), where('lotNumber', 'in', variations)),
+          query(collection(db, 'lots'), where('harvest.lotNumber', 'in', variations)),
+          query(collection(db, 'lots'), where('id', 'in', variations))
+        ];
+
+        for (const q of lotsQueries) {
+          const snapshot = await getDocs(q);
+          console.log('Query snapshot size for lots collection:', snapshot.size);
+          
+          if (!snapshot.empty) {
+            const lotDoc = snapshot.docs[0];
+            const lotData = lotDoc.data() as AvocadoTrackingData;
+            console.log('Found lot data in lots collection:', lotData);
+            setLotData(lotData);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // If not found in lots, try avocado-tracking collection with multiple field checks
+        const trackingQueries = [
+          query(collection(db, 'avocado-tracking'), where('lotNumber', 'in', variations)),
+          query(collection(db, 'avocado-tracking'), where('harvest.lotNumber', 'in', variations)),
+          query(collection(db, 'avocado-tracking'), where('id', 'in', variations))
+        ];
+
+        for (const q of trackingQueries) {
+          const snapshot = await getDocs(q);
+          console.log('Query snapshot size for avocado-tracking collection:', snapshot.size);
+          
+          if (!snapshot.empty) {
+            const lotDoc = snapshot.docs[0];
+            const lotData = lotDoc.data() as AvocadoTrackingData;
+            console.log('Found lot data in avocado-tracking collection:', lotData);
+            setLotData(lotData);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        console.log('No lot found with any of the variations');
+        setErrorMessage('Le lot n\'existe pas ou n\'a pas pu être trouvé.');
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error fetching lot data:', error);
+        setErrorMessage('Une erreur est survenue lors de la récupération des données du lot.');
+        setIsLoading(false);
+      }
+    };
+
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      if (isLoading) {
+        console.log('Loading timeout reached');
+        setIsLoading(false);
+        setErrorMessage('Le temps de chargement a expiré. Veuillez réessayer.');
+      }
+    }, 10000); // 10 seconds timeout
+
+    fetchLotData();
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [rawLotNumber]);
+
+  const getProgressPercentage = (lot: AvocadoTrackingData | null): number => {
     if (!lot) return 0;
     const steps = [
       lot.harvest.harvestDate,
@@ -54,7 +219,7 @@ export default function LotDetailPage() {
     return (completedSteps / steps.length) * 100;
   };
 
-  const getStatusBadge = (lot) => {
+  const getStatusBadge = (lot: AvocadoTrackingData | null) => {
     if (!lot) return null;
     
     if (lot.delivery.actualDeliveryDate) {
@@ -78,7 +243,7 @@ export default function LotDetailPage() {
     return <Badge className="bg-gray-100 text-gray-800">Récolté</Badge>;
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string | undefined): string => {
     if (!dateString) return "En attente";
     return new Date(dateString).toLocaleDateString('fr-FR', {
       year: 'numeric',
@@ -89,54 +254,46 @@ export default function LotDetailPage() {
     });
   };
 
-  const formatDateShort = (dateString) => {
+  const formatDateShort = (dateString: string | undefined): string => {
     if (!dateString) return "En attente";
     return new Date(dateString).toLocaleDateString('fr-FR');
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-neutral-500">Chargement des détails du lot...</p>
+          <p className="text-lg">Chargement des détails du lot...</p>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (errorMessage) {
     return (
       <div className="p-4 md:p-6">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Erreur</AlertTitle>
           <AlertDescription>
-            Impossible de charger les détails du lot. Veuillez réessayer plus tard.
+            {errorMessage}
           </AlertDescription>
         </Alert>
       </div>
     );
   }
 
-  if (!lot) {
+  if (!lotData) {
     return (
       <div className="p-4 md:p-6">
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Lot non trouvé</AlertTitle>
           <AlertDescription>
-            Le lot {id} n'existe pas ou n'a pas pu être trouvé.
+            Le lot {rawLotNumber} n'existe pas ou n'a pas pu être trouvé.
           </AlertDescription>
         </Alert>
-        <div className="mt-4">
-          <Button asChild variant="outline">
-            <Link href="/lots">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Retour aux lots
-            </Link>
-          </Button>
-        </div>
       </div>
     );
   }
@@ -144,52 +301,52 @@ export default function LotDetailPage() {
   const timelineSteps = [
     {
       title: "Récolte",
-      date: lot.harvest.harvestDate,
+      date: lotData.harvest.harvestDate,
       icon: <Clock className="h-5 w-5" />,
-      completed: !!lot.harvest.harvestDate,
-      details: `Ferme: ${lot.harvest.farmLocation} | Variété: ${lot.harvest.variety}`
+      completed: !!lotData.harvest.harvestDate,
+      details: `Ferme: ${lotData.harvest.farmLocation} | Variété: ${lotData.harvest.variety}`
     },
     {
       title: "Transport",
-      date: lot.transport.arrivalDateTime,
+      date: lotData.transport.arrivalDateTime,
       icon: <Truck className="h-5 w-5" />,
-      completed: !!lot.transport.arrivalDateTime,
-      details: `Véhicule: ${lot.transport.vehicleId || 'N/A'} | Chauffeur: ${lot.transport.driverName || 'N/A'}`
+      completed: !!lotData.transport.arrivalDateTime,
+      details: `Véhicule: ${lotData.transport.vehicleId || 'N/A'} | Chauffeur: ${lotData.transport.driverName || 'N/A'}`
     },
     {
       title: "Tri",
-      date: lot.sorting.sortingDate,
+      date: lotData.sorting.sortingDate,
       icon: <Package className="h-5 w-5" />,
-      completed: !!lot.sorting.sortingDate,
-      details: `Grade: ${lot.sorting.qualityGrade || 'N/A'} | Rejetés: ${lot.sorting.rejectedQuantity || 0} kg`
+      completed: !!lotData.sorting.sortingDate,
+      details: `Grade: ${lotData.sorting.qualityGrade || 'N/A'} | Rejetés: ${lotData.sorting.rejectedQuantity || 0} kg`
     },
     {
       title: "Emballage",
-      date: lot.packaging.packagingDate,
+      date: lotData.packaging.packagingDate,
       icon: <Box className="h-5 w-5" />,
-      completed: !!lot.packaging.packagingDate,
-      details: `Poids net: ${lot.packaging.netWeight || 0} kg | Type: ${lot.packaging.packagingType || 'N/A'}`
+      completed: !!lotData.packaging.packagingDate,
+      details: `Poids net: ${lotData.packaging.netWeight || 0} kg | Type: ${lotData.packaging.packagingType || 'N/A'}`
     },
     {
       title: "Stockage",
-      date: lot.storage.entryDate,
+      date: lotData.storage.entryDate,
       icon: <Building className="h-5 w-5" />,
-      completed: !!lot.storage.entryDate,
-      details: `Zone: ${lot.storage.storageZone || 'N/A'} | Temp: ${lot.storage.temperature || 'N/A'}°C`
+      completed: !!lotData.storage.entryDate,
+      details: `Zone: ${lotData.storage.storageZone || 'N/A'} | Temp: ${lotData.storage.temperature || 'N/A'}°C`
     },
     {
       title: "Export",
-      date: lot.export.loadingDate,
+      date: lotData.export.loadingDate,
       icon: <Ship className="h-5 w-5" />,
-      completed: !!lot.export.loadingDate,
-      details: `Destination: ${lot.export.destination || 'N/A'} | Container: ${lot.export.containerNumber || 'N/A'}`
+      completed: !!lotData.export.loadingDate,
+      details: `Destination: ${lotData.export.destination || 'N/A'} | Container: ${lotData.export.containerNumber || 'N/A'}`
     },
     {
       title: "Livraison",
-      date: lot.delivery.actualDeliveryDate,
+      date: lotData.delivery.actualDeliveryDate,
       icon: <CheckCircle2 className="h-5 w-5" />,
-      completed: !!lot.delivery.actualDeliveryDate,
-      details: `Client: ${lot.delivery.customerName || 'N/A'}`
+      completed: !!lotData.delivery.actualDeliveryDate,
+      details: `Client: ${lotData.delivery.customerName || 'N/A'}`
     }
   ];
 
@@ -199,17 +356,23 @@ export default function LotDetailPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Button asChild variant="outline" size="sm">
-            <Link href="/lots">
+            <Link href="/">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Retour
             </Link>
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">Lot {lot.harvest.lotNumber}</h1>
+            <h1 className="text-3xl font-bold">Lot {lotData?.harvest?.lotNumber}</h1>
             <p className="text-neutral-500">Détails complets du suivi</p>
           </div>
         </div>
-        {getStatusBadge(lot)}
+        <div className="flex items-center space-x-2">
+          {lotData && getStatusBadge(lotData)}
+          <Button variant="outline" size="sm" onClick={handleShare}>
+            <Share2 className="h-4 w-4 mr-2" />
+            Partager
+          </Button>
+        </div>
       </div>
 
       {/* Progress Overview */}
@@ -221,9 +384,9 @@ export default function LotDetailPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Progression totale</span>
-              <span className="text-2xl font-bold">{Math.round(getProgressPercentage(lot))}%</span>
+              <span className="text-2xl font-bold">{Math.round(getProgressPercentage(lotData))}%</span>
             </div>
-            <Progress value={getProgressPercentage(lot)} className="h-3" />
+            <Progress value={getProgressPercentage(lotData)} className="h-3" />
             <p className="text-sm text-neutral-500">
               {timelineSteps.filter(step => step.completed).length} sur {timelineSteps.length} étapes complétées
             </p>
@@ -239,7 +402,7 @@ export default function LotDetailPage() {
               <MapPin className="h-5 w-5 text-neutral-500" />
               <div>
                 <p className="text-sm font-medium">Ferme</p>
-                <p className="text-lg">{lot.harvest.farmLocation}</p>
+                <p className="text-lg">{lotData.harvest.farmLocation}</p>
               </div>
             </div>
           </CardContent>
@@ -251,7 +414,7 @@ export default function LotDetailPage() {
               <FileText className="h-5 w-5 text-neutral-500" />
               <div>
                 <p className="text-sm font-medium">Variété</p>
-                <p className="text-lg">{lot.harvest.variety}</p>
+                <p className="text-lg">{lotData.harvest.variety}</p>
               </div>
             </div>
           </CardContent>
@@ -263,7 +426,7 @@ export default function LotDetailPage() {
               <Scale className="h-5 w-5 text-neutral-500" />
               <div>
                 <p className="text-sm font-medium">Poids Net</p>
-                <p className="text-lg">{lot.packaging.netWeight || 0} kg</p>
+                <p className="text-lg">{lotData.packaging.netWeight || 0} kg</p>
               </div>
             </div>
           </CardContent>
@@ -275,7 +438,7 @@ export default function LotDetailPage() {
               <Package className="h-5 w-5 text-neutral-500" />
               <div>
                 <p className="text-sm font-medium">Grade</p>
-                <p className="text-lg">{lot.sorting.qualityGrade || 'N/A'}</p>
+                <p className="text-lg">{lotData.sorting.qualityGrade || 'N/A'}</p>
               </div>
             </div>
           </CardContent>
@@ -323,217 +486,6 @@ export default function LotDetailPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Detailed Information Sections */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Harvest Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Clock className="mr-2 h-5 w-5" />
-              Détails de la Récolte
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-gray-600">Date de récolte:</span>
-                <p>{formatDate(lot.harvest.harvestDate)}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Ferme:</span>
-                <p>{lot.harvest.farmLocation}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Variété:</span>
-                <p>{lot.harvest.variety}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Producteur:</span>
-                <p>{lot.harvest.farmerName || 'N/A'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Transport Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Truck className="mr-2 h-5 w-5" />
-              Détails du Transport
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-gray-600">Date d'arrivée:</span>
-                <p>{formatDate(lot.transport.arrivalDateTime)}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Véhicule:</span>
-                <p>{lot.transport.vehicleId || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Chauffeur:</span>
-                <p>{lot.transport.driverName || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Temperature:</span>
-                <p>{lot.transport.transportTemperature ? `${lot.transport.transportTemperature}°C` : 'N/A'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Sorting Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Package className="mr-2 h-5 w-5" />
-              Détails du Tri
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-gray-600">Date de tri:</span>
-                <p>{formatDate(lot.sorting.sortingDate)}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Grade qualité:</span>
-                <p>{lot.sorting.qualityGrade || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Quantité rejetée:</span>
-                <p>{lot.sorting.rejectedQuantity || 0} kg</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Responsable:</span>
-                <p>{lot.sorting.sortingOperator || 'N/A'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Packaging Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Box className="mr-2 h-5 w-5" />
-              Détails de l'Emballage
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-gray-600">Date d'emballage:</span>
-                <p>{formatDate(lot.packaging.packagingDate)}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Type d'emballage:</span>
-                <p>{lot.packaging.packagingType || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Poids net:</span>
-                <p>{lot.packaging.netWeight || 0} kg</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Nombre d'unités:</span>
-                <p>{lot.packaging.packageCount || 0}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Storage Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Building className="mr-2 h-5 w-5" />
-              Détails du Stockage
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-gray-600">Date d'entrée:</span>
-                <p>{formatDate(lot.storage.entryDate)}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Zone de stockage:</span>
-                <p>{lot.storage.storageZone || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Température:</span>
-                <p>{lot.storage.temperature ? `${lot.storage.temperature}°C` : 'N/A'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Humidité:</span>
-                <p>{lot.storage.humidity ? `${lot.storage.humidity}%` : 'N/A'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Export Details */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Ship className="mr-2 h-5 w-5" />
-              Détails de l'Export
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-gray-600">Date de chargement:</span>
-                <p>{formatDate(lot.export.loadingDate)}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Destination:</span>
-                <p>{lot.export.destination || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Numéro de container:</span>
-                <p>{lot.export.containerNumber || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Navire:</span>
-                <p>{lot.export.vesselName || 'N/A'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Delivery Details */}
-      {lot.delivery.actualDeliveryDate && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <CheckCircle2 className="mr-2 h-5 w-5" />
-              Détails de la Livraison
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-gray-600">Date de livraison:</span>
-                <p>{formatDate(lot.delivery.actualDeliveryDate)}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Client:</span>
-                <p>{lot.delivery.customerName || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600">Adresse de livraison:</span>
-                <p>{lot.delivery.deliveryAddress || 'N/A'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

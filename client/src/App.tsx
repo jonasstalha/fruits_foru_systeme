@@ -39,6 +39,26 @@ import DocumentArchive from "@/pages/archive/DocumentArchive";
 import NewProductPage from "@/pages/new-product-page";
 import { auth } from '@/lib/firebase';
 
+// Public routes that don't require authentication
+function PublicRoutes() {
+  return (
+    <Switch>
+      {/* Public lot detail routes */}
+      <Route path="/tracability/lot/:lotNumber" component={LotDetailPage} />
+      <Route path="/lots/:lotNumber" component={LotDetailPage} />
+      <Route path="/api/avocado-tracking/:lotNumber/pdf" component={LotDetailPage} />
+      <Route path="/api/avocado-tracking/:lotNumber/generate-pdf" component={LotDetailPage} />
+      <Route path="/login" component={LoginPage} />
+      <Route path="*">
+        <ProtectedRoute>
+          <AuthenticatedRoutes />
+        </ProtectedRoute>
+      </Route>
+    </Switch>
+  );
+}
+
+// Routes that require authentication
 function AuthenticatedRoutes() {
   return (
     <MainLayout>
@@ -48,7 +68,6 @@ function AuthenticatedRoutes() {
         <Route path="/new-product" component={NewProductPage} />
         <Route path="/scan" component={ScanPage} />
         <Route path="/lots" component={LotsPage} />
-        <Route path="/lots/:id" component={LotDetailPage} />
         <Route path="/farms" component={FarmsPage} />
         <Route path="/farms/:id" component={FarmDetailPage} />
         <Route path="/users" component={UsersPage} />
@@ -67,33 +86,24 @@ function AuthenticatedRoutes() {
         <Route path="/new" component={newEntry} />
         <Route path="/schedules" component={Horaires} />
         <Route path="/historiquedeconsomation" component={historiquedeconsomation} />
-        <Route path="/Archivagedesfacture" component={Archivagedesfacture} />
         <Route path="/Templates" component={DocumentTemplates} />
         <Route path="/logistique/fichedexpidition" component={FichedExpidition} />
         <Route path="/Rapportqualité" component={Rapportqualité} />
         <Route path="/Archivagedescontroles" component={Archivagedescontroles} />
-        <Route path="/ReportsPage" component={ReportsPagee} />
-        <Route path="/archive" component={DocumentArchive} />
-        <Route component={NotFound} />
+        <Route path="/Archivagedesfacture" component={Archivagedesfacture} />
+        <Route path="/DocumentArchive" component={DocumentArchive} />
+        <Route path="*" component={NotFound} />
       </Switch>
     </MainLayout>
   );
 }
 
-function App() {
+export default function App() {
   return (
     <AuthProvider>
-      <Switch>
-        <Route path="/login" component={LoginPage} />
-        <Route path="*">
-          <ProtectedRoute>
-            <AuthenticatedRoutes />
-          </ProtectedRoute>
-        </Route>
-      </Switch>
+      <PublicRoutes />
       <Toaster />
       <SonnerToaster />
     </AuthProvider>
   );
 }
-export default App;

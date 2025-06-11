@@ -190,6 +190,12 @@ service cloud.firestore {
       allow delete: if isAuthenticated();
     }
     
+    // Allow public read access to lots collection
+    match /lots/{document=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+    
     // Warehouses collection
     match /warehouses/{documentId} {
       allow read: if isAuthenticated();
@@ -198,12 +204,10 @@ service cloud.firestore {
       allow delete: if isAuthenticated();
     }
     
-    // Avocado tracking collection
+    // Avocado tracking collection - public read access
     match /avocado-tracking/{documentId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidAvocadoTrackingData();
-      allow update: if isAuthenticated() && isValidAvocadoTrackingData();
-      allow delete: if isAuthenticated();
+      allow read: if true; // Allow public read access
+      allow write: if isAuthenticated();
     }
     
     // PDF reports collection

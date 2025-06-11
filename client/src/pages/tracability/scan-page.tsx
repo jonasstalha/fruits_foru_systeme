@@ -1,18 +1,24 @@
-import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 import BarcodeScanner from "@/components/scan/barcode-scanner";
 import PDFViewer from "@/components/pdf/pdf-viewer";
 import { AvocadoTracking } from "@shared/schema";
-import { Loader2, QrCode, Search, Camera, X, FileText, ExternalLink, Download, Share2, Copy } from "lucide-react";
+import { Loader2, QrCode, Search, Camera, X, FileText, ExternalLink, Download, Share2, Copy, Eye } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiRequest } from '../../lib/queryClient';
+import { QrScanner } from '@yudiel/react-qr-scanner';
 
 // Simple QR code component that doesn't rely on Firebase
-const SimpleQRCode = ({ value, size = 200 }) => {
+interface SimpleQRCodeProps {
+  value: string;
+  size?: number;
+}
+
+const SimpleQRCode = ({ value, size = 200 }: SimpleQRCodeProps) => {
   return (
     <div
       style={{
@@ -24,6 +30,20 @@ const SimpleQRCode = ({ value, size = 200 }) => {
       }}
     />
   );
+};
+
+// Analytics tracking function
+const trackQRScan = async (lotNumber: string, scanType: 'view' | 'download') => {
+  try {
+    await apiRequest('POST', '/api/analytics/track-scan', {
+      lotNumber,
+      scanType,
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent,
+    });
+  } catch (error) {
+    console.error('Failed to track QR scan:', error);
+  }
 };
 
 export default function ScanPage() {
@@ -39,26 +59,205 @@ export default function ScanPage() {
   const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
   // New states for QR code functionality
   const [showQRGenerator, setShowQRGenerator] = useState(false);
-  const [generatedQRData, setGeneratedQRData] = useState<string>("");
+  const [generatedQRData, setGeneratedQRData] = useState<string | null>(null);
   const [showQRModal, setShowQRModal] = useState(false);
-  const [qrType, setQrType] = useState<'view' | 'download'>('download');
+  const [qrType, setQrType] = useState<'download' | 'view'>('download');
+  const [scanCount, setScanCount] = useState<number>(0);
+  const [lastScanDate, setLastScanDate] = useState<string | null>(null);
+
+  // Enhanced manual lookup with better error handling and logging
+  const handleLookupLot = async (manualLotNumber?: string) => {
+    const lotToLookup = getTrimmedLotNumber(manualLotNumber);
+    console.log('Looking up lot:', lotToLookup);
+
+    if (!lotToLookup) {
+      toast({
+        title: "Numéro de lot requis",
+        description: "Veuillez entrer un numéro de lot pour la recherche",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Update lotNumber state if using manual input
+      if (manualLotNumber) {
+        setLotNumber(manualLotNumber);
+      }
+
+      console.log('Fetching lot data from API...');
+      // Make direct API request to find the lot
+      const result = await apiRequest<AvocadoTracking>('GET', `/api/avocado-tracking/${lotToLookup}`);
+      console.log('API Response:', result);
+
+      if (result) {
+        setScannedLot(result);
+        setLotId(result.harvest.lotNumber);
+
+        // Initialize scan statistics with default values
+        setScanCount(0);
+        setLastScanDate(null);
+
+        toast({
+          title: "Lot trouvé",
+          description: `Lot ${result.harvest.lotNumber} trouvé avec succès`,
+        });
+      } else {
+        throw new Error("Lot non trouvé");
+      }
+    } catch (err) {
+      console.error("Lookup error:", err);
+      setScannedLot(null);
+      setLotId(null);
+      setScanCount(0);
+      setLastScanDate(null);
+
+      const errorMessage = err instanceof Error ? err.message : "Erreur inconnue";
+      console.error('Error details:', errorMessage);
+
+      toast({
+        title: "Erreur de recherche",
+        description: `Impossible de trouver le lot ${lotToLookup}. ${errorMessage}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Helper function to safely get trimmed lot number
   const getTrimmedLotNumber = (lot?: string) => {
-    return (lot || lotNumber || "").toString().trim();
+    const trimmed = (lot || lotNumber || "").toString().trim();
+    console.log('Trimmed lot number:', trimmed); // Debug log
+    return trimmed;
   };
 
-  // Generate unique QR data for the lot
-  const generateQRData = (lot: AvocadoTracking, type: 'view' | 'download' = 'download') => {
-    const baseUrl = window.location.origin;
+  // Safe check for lot number validity
+  const isValidLotNumber = () => {
+    const trimmed = getTrimmedLotNumber();
+    const isValid = trimmed.length > 0;
+    console.log('Lot number valid:', isValid); // Debug log
+    return isValid;
+  };
 
-    if (type === 'download') {
-      // Create a direct download URL with a data attribute that will be recognized by the scanner
-      // Use a special format that will be detected by handleBarcodeDetected
-      return `${baseUrl}/direct-download:${lot.harvest.lotNumber}`;
-    } else {
-      // View lot details URL
-      return `${baseUrl}/lots/${lot.harvest.lotNumber}`;
+  // Enhanced QR code generation with better error handling
+  const handleGenerateQR = async (type: 'download' | 'view') => {
+    if (!scannedLot) return;
+
+    try {
+      const baseUrl = window.location.origin;
+      const url = type === 'download' 
+        ? `${baseUrl}/api/avocado-tracking/${scannedLot.harvest.lotNumber}/pdf`
+        : `${baseUrl}/tracability/lot/${scannedLot.harvest.lotNumber}`;
+
+      const qrData = {
+        url,
+        type,
+        lotNumber: scannedLot.harvest.lotNumber
+      };
+
+      setGeneratedQRData(JSON.stringify(qrData));
+      setQrType(type);
+      setShowQRModal(true);
+
+      toast({
+        title: "QR Code généré",
+        description: `QR Code ${type === 'download' ? 'de téléchargement' : 'de consultation'} créé pour le lot ${scannedLot.harvest.lotNumber}`,
+      });
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de générer le QR code. Veuillez réessayer.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Enhanced barcode detection with automatic navigation
+  const handleBarcodeDetected = async (result: any) => {
+    try {
+      console.log('Barcode detected:', result);
+      
+      // Extract lot number from the QR code
+      let lotNumber = result.text;
+      
+      // If the QR code contains a URL, extract the lot number from it
+      if (lotNumber.includes('/')) {
+        const urlParts = lotNumber.split('/');
+        lotNumber = urlParts[urlParts.length - 1];
+      }
+
+      if (!lotNumber) {
+        toast({
+          title: "Format de QR code invalide",
+          description: "Le QR code ne contient pas de numéro de lot valide",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('Extracted lot number:', lotNumber);
+      
+      // Clean the lot number before navigation
+      const cleanLotNumber = lotNumber.replace(/[^a-zA-Z0-9-]/g, '');
+      console.log('Cleaned lot number:', cleanLotNumber);
+      
+      // Navigate to the lot detail page
+      setLocation(`/tracability/lot/${cleanLotNumber}`);
+
+    } catch (error) {
+      console.error('Error handling barcode:', error);
+      toast({
+        title: "Erreur",
+        description: "Erreur lors du traitement du QR code",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Enhanced PDF download with report generation
+  const handleDownloadPDF = async () => {
+    if (!scannedLot) return;
+
+    setIsDownloading(true);
+    try {
+      // Generate PDF report
+      const response = await apiRequest<{ pdfUrl: string }>('POST', `/api/avocado-tracking/${scannedLot.harvest.lotNumber}/generate-report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(scannedLot)
+      });
+
+      if (response && response.pdfUrl) {
+        // Create a temporary link and trigger download
+        const link = document.createElement('a');
+        link.href = response.pdfUrl;
+        link.download = `rapport_tracabilite_${scannedLot.harvest.lotNumber}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        toast({
+          title: "Rapport téléchargé",
+          description: `Le rapport de traçabilité du lot ${scannedLot.harvest.lotNumber} a été téléchargé avec succès`,
+        });
+      } else {
+        throw new Error("URL du rapport non disponible");
+      }
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast({
+        title: "Erreur de téléchargement",
+        description: "Impossible de télécharger le rapport. Veuillez réessayer.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+      setShowDownloadConfirm(false);
     }
   };
 
@@ -132,57 +331,6 @@ export default function ScanPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  // Handle QR code generation - Auto download version
-const handleGenerateQR = async (type: 'view' | 'download' = 'download') => {
-  if (!scannedLot) {
-    toast({
-      title: "Erreur",
-      description: "Aucun lot sélectionné pour générer le QR code", 
-      variant: "destructive",
-    });
-    return;
-  }
-
-  try {
-    // Generate QR code data based on type
-    const qrData = generateQRData(scannedLot, type);
-    setGeneratedQRData(qrData);
-    setQrType(type);
-    setShowQRModal(true);
-
-    toast({
-      title: "QR Code généré",
-      description: `QR Code ${type === 'download' ? 'de téléchargement' : 'de consultation'} créé pour le lot ${scannedLot.harvest.lotNumber}`,
-    });
-
-    // Only attempt download if PDF generation is available
-    if (type === 'download') {
-      try {
-        // Check if PDF endpoint is available
-        const checkResponse = await fetch(`/api/check-pdf/${scannedLot.harvest.lotNumber}`);
-        if (checkResponse.ok) {
-          handleDownloadPDF();
-        } else {
-          toast({
-            title: "PDF non disponible",
-            description: "La génération de PDF n'est pas disponible pour le moment",
-            variant: "warning",
-          });
-        }
-      } catch (pdfError) {
-        console.error('PDF availability check failed:', pdfError);
-        // Continue showing QR code even if PDF check fails
-      }
-    }
-  } catch (error) {
-    console.error('Error generating QR:', error);
-    toast({
-      title: "Erreur QR Code",
-      description: "Impossible de générer le QR Code. Veuillez réessayer.",
-      variant: "destructive",
-    });
-  }
-};
   // Handle QR code sharing
   const handleShareQR = async () => {
     if (!scannedLot) return;
@@ -235,149 +383,6 @@ const handleGenerateQR = async (type: 'view' | 'download' = 'download') => {
     }
   };
 
-  // Handle PDF download - Fixed version
-  const handleDownloadPDF = async () => {
-    if (!scannedLot || !scannedLot.harvest.lotNumber) {
-      toast({
-        title: "Erreur",
-        description: "Aucun lot sélectionné pour télécharger le PDF",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsDownloading(true);
-    try {
-      const lotNumber = scannedLot.harvest.lotNumber;
-
-      // Make direct API call to get PDF
-      const pdfBlob = await apiRequest<Blob>('GET', `/pdf/${lotNumber}`);
-
-      if (pdfBlob) {
-        downloadPDFBlob(pdfBlob, lotNumber);
-        toast({
-          title: "PDF téléchargé",
-          description: `Le PDF du lot ${lotNumber} a été téléchargé avec succès`,
-        });
-      } else {
-        throw new Error("PDF data is empty");
-      }
-    } catch (error) {
-      console.error("PDF download error:", error);
-      toast({
-        title: "Erreur de téléchargement",
-        description: "Impossible de télécharger le PDF. Veuillez réessayer.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsDownloading(false);
-      setShowDownloadConfirm(false);
-    }
-  };
-
-  // Handle barcode detection - Updated version for direct downloads
-  const handleBarcodeDetected = async (code: string) => {
-    setIsLoading(true);
-    try {
-      console.log("Scanned code:", code);
-
-      // Check if the scanned code is a direct download URL
-      if (code.includes('/direct-download:')) {
-        // Extract lot ID from the special format
-        const lotIdFromUrl = code.split('/direct-download:')[1];
-
-        if (lotIdFromUrl) {
-          toast({
-            title: "Téléchargement du PDF",
-            description: `Téléchargement du PDF pour le lot ${lotIdFromUrl}`,
-          });
-
-          // Trigger immediate PDF download
-          const pdfResult = await apiRequest<Blob>('GET', `/pdf/${lotIdFromUrl}`);
-          if (pdfResult) {
-            downloadPDFBlob(pdfResult, lotIdFromUrl);
-          }
-        }
-      } else if (code.includes('/lots/')) {
-        // Handle lot view URL
-        const urlObj = new URL(code);
-        const pathParts = urlObj.pathname.split('/');
-        const lotIdFromUrl = pathParts[pathParts.length - 1];
-
-        if (lotIdFromUrl) {
-          setLotNumber(lotIdFromUrl);
-          await handleLookupLot(lotIdFromUrl);
-        }
-      } else {
-        // Handle regular lot number scan
-        setLotNumber(code);
-        await handleLookupLot(code);
-      }
-
-      setShowScanner(false);
-    } catch (error) {
-      console.error("Error processing barcode:", error);
-      toast({
-        title: "Erreur de scan",
-        description: "Impossible de traiter le code scanné. Veuillez réessayer.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle manual lookup - Fixed version with direct API calls
-  const handleLookupLot = async (manualLotNumber?: string) => {
-    const lotToLookup = getTrimmedLotNumber(manualLotNumber);
-
-    if (!lotToLookup) {
-      toast({
-        title: "Numéro de lot requis",
-        description: "Veuillez entrer un numéro de lot pour la recherche",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      // Update lotNumber state if using manual input
-      if (manualLotNumber) {
-        setLotNumber(manualLotNumber);
-      }
-
-      // Make direct API request to find the lot
-      const result = await apiRequest<AvocadoTracking>('GET', `/api/avocado-tracking/${lotToLookup}`);
-
-      if (result) {
-        setScannedLot(result);
-        setLotId(result.harvest.lotNumber);
-
-        toast({
-          title: "Lot trouvé",
-          description: `Lot ${result.harvest.lotNumber} trouvé avec succès`,
-        });
-      } else {
-        throw new Error("Lot non trouvé");
-      }
-    } catch (err) {
-      console.error("Lookup error:", err);
-      setScannedLot(null);
-      setLotId(null);
-
-      const errorMessage = err instanceof Error ? err.message : "Erreur inconnue";
-
-      toast({
-        title: "Lot non trouvé",
-        description: `Le lot ${lotToLookup} n'existe pas dans la base de données. ${errorMessage}`,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   // View details of scanned lot
   const viewLotDetails = () => {
     if (scannedLot) {
@@ -397,223 +402,61 @@ const handleGenerateQR = async (type: 'view' | 'download' = 'download') => {
     setShowDownloadConfirm(true);
   };
 
-  // Safe check for lot number validity
-  const isValidLotNumber = () => {
-    const trimmed = getTrimmedLotNumber();
-    return trimmed.length > 0;
-  };
+  // Enhanced QR code modal
+  const QRCodeModal = () => {
+    if (!showQRModal || !scannedLot || !generatedQRData) return null;
 
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Left Column: Scan & Search */}
-      <div className="space-y-6">
-        {/* Scanner Card */}
-        <Card>
-          <CardHeader>
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <Card className="w-full max-w-md">
+          <CardHeader className="bg-muted/50">
             <CardTitle className="flex items-center gap-2">
               <QrCode className="h-5 w-5" />
-              Scanner un Code
+              QR Code - Lot {scannedLot.harvest.lotNumber}
             </CardTitle>
             <CardDescription>
-              Utilisez la caméra pour scanner un code-barres ou QR code
+              {qrType === 'download'
+                ? 'QR Code de téléchargement PDF pour ce lot'
+                : 'QR Code de consultation pour ce lot'
+              }
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6">
-            {showScanner ? (
-              <div className="relative">
-                <div className="aspect-video bg-black rounded-lg overflow-hidden">
-                  <BarcodeScanner onDetected={handleBarcodeDetected} />
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="absolute top-2 right-2"
-                  onClick={() => setShowScanner(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+            <div className="flex flex-col items-center space-y-4">
+              <div className="bg-white p-4 rounded-lg border">
+                <SimpleQRCode
+                  value={generatedQRData}
+                  size={200}
+                />
               </div>
-            ) : (
-              <Button
-                className="w-full h-[200px]"
-                variant="outline"
-                onClick={() => setShowScanner(true)}
-              >
-                <Camera className="h-6 w-6 mr-2" />
-                Activer la Caméra
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Manual Search Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5" />
-              Recherche Manuelle
-            </CardTitle>
-            <CardDescription>
-              Entrez manuellement un numéro de lot
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="flex gap-2">
-              <Input
-                value={lotNumber || ""}
-                onChange={(e) => setLotNumber(e.target.value || "")}
-                placeholder="Entrez le numéro de lot"
-                disabled={isLoading}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && isValidLotNumber()) {
-                    handleLookupLot();
+              <div className="text-center space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  {qrType === 'download'
+                    ? 'Scannez ce code pour télécharger automatiquement le PDF'
+                    : 'Scannez ce code pour accéder aux informations du lot'
                   }
-                }}
-              />
-              <Button
-                onClick={() => handleLookupLot()}
-                disabled={isLoading || !isValidLotNumber()}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Recherche
-                  </>
-                ) : (
-                  <>
-                    <Search className="h-4 w-4 mr-2" />
-                    Rechercher
-                  </>
-                )}
-              </Button>
+                </p>
+                <p className="text-xs text-muted-foreground break-all px-2">
+                  {generatedQRData}
+                </p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={handleCopyQRData}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copier Lien
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleShareQR}>
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Partager
+                  </Button>
+                </div>
+              </div>
             </div>
           </CardContent>
-        </Card>
-      </div>
-
-      {/* Right Column: Results */}
-      <div>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Résultats
-            </CardTitle>
-            <CardDescription>
-              Informations sur le lot scanné ou recherché
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-6">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-[200px]">
-                <Loader2 className="h-8 w-8 animate-spin" />
-              </div>
-            ) : scannedLot ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground">Numéro de Lot</div>
-                    <div className="text-lg font-semibold">{scannedLot.harvest.lotNumber}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground">Date de Récolte</div>
-                    <div className="text-lg font-semibold">
-                      {new Date(scannedLot.harvest.harvestDate).toLocaleDateString()}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground">Quantité</div>
-                    <div className="text-lg font-semibold">{scannedLot.packaging.netWeight} kg</div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground">Statut</div>
-                    <div className="text-lg font-semibold capitalize">
-                      {scannedLot.delivery.actualDeliveryDate ? 'Livré' : 'En cours'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-[200px] text-center text-muted-foreground">
-                <Search className="h-8 w-8 mb-2" />
-                <p>Scannez un code ou effectuez une recherche pour voir les résultats</p>
-              </div>
-            )}
-          </CardContent>
-          {scannedLot && (
-            <CardFooter className="flex justify-end gap-2 p-6 pt-0">
-              <Button variant="outline" onClick={() => handleGenerateQR('download')}>
-                <Download className="h-4 w-4 mr-2" />
-                QR Téléchargement
-              </Button>
-              <Button variant="outline" onClick={handleShareQR}>
-                <Share2 className="h-4 w-4 mr-2" />
-                Partager
-              </Button>
-              <Button variant="outline" onClick={showPDF}>
-                <FileText className="h-4 w-4 mr-2" />
-                Voir PDF
-              </Button>
-              <Button onClick={viewLotDetails}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Voir Détails
-              </Button>
-            </CardFooter>
-          )}
-        </Card>
-      </div>
-
-      {/* QR Code Modal */}
-      {showQRModal && scannedLot && generatedQRData && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <QrCode className="h-5 w-5" />
-                QR Code - Lot {scannedLot.harvest.lotNumber}
-              </CardTitle>
-              <CardDescription>
-                {qrType === 'download'
-                  ? 'QR Code de téléchargement PDF pour ce lot'
-                  : 'QR Code de consultation pour ce lot'
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="flex flex-col items-center space-y-4">
-                <div className="bg-white p-4 rounded-lg border">
-                  <SimpleQRCode
-                    value={generatedQRData}
-                    size={200}
-                  />
-                </div>
-                <div className="text-center space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    {qrType === 'download'
-                      ? 'Scannez ce code pour télécharger automatiquement le PDF'
-                      : 'Scannez ce code pour accéder aux informations du lot'
-                    }
-                  </p>
-                  <p className="text-xs text-muted-foreground break-all px-2">
-                    {generatedQRData}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={handleCopyQRData}>
-                      <Copy className="h-4 w-4 mr-2" />
-                      Copier Lien
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={handleShareQR}>
-                      <Share2 className="h-4 w-4 mr-2" />
-                      Partager
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowQRModal(false)}>
-                Fermer
-              </Button>
+          <CardFooter className="flex justify-end gap-2 bg-muted/50">
+            <Button variant="outline" onClick={() => setShowQRModal(false)}>
+              Fermer
+            </Button>
+            {qrType === 'download' && (
               <Button onClick={handleDownloadClick} disabled={isDownloading}>
                 {isDownloading ? (
                   <>
@@ -627,77 +470,237 @@ const handleGenerateQR = async (type: 'view' | 'download' = 'download') => {
                   </>
                 )}
               </Button>
-            </CardFooter>
-          </Card>
-        </div>
-      )}
+            )}
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  };
 
-      {/* Download Confirmation Dialog */}
-      {showDownloadConfirm && scannedLot && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle>Télécharger le PDF</CardTitle>
-              <CardDescription>
-                Voulez-vous télécharger le rapport PDF pour le lot {scannedLot.harvest.lotNumber} ?
-              </CardDescription>
-            </CardHeader>
-            <CardFooter className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowDownloadConfirm(false)}>
-                Annuler
-              </Button>
-              <Button onClick={handleDownloadPDF} disabled={isDownloading}>
-                {isDownloading ? (
+  return (
+    <div className="container mx-auto p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Search Section */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Recherche de Lot
+            </CardTitle>
+            <CardDescription>
+              Entrez le numéro de lot pour voir les détails et accéder au PDF
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-6">
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (isValidLotNumber()) {
+                  handleLookupLot();
+                }
+              }}
+              className="flex gap-2"
+            >
+              <Input
+                value={lotNumber}
+                onChange={(e) => setLotNumber(e.target.value)}
+                placeholder="Entrez le numéro de lot"
+                disabled={isLoading}
+                className="flex-1"
+              />
+              <Button
+                type="submit"
+                disabled={isLoading || !isValidLotNumber()}
+                className="min-w-[100px]"
+              >
+                {isLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Téléchargement...
+                    Recherche
                   </>
                 ) : (
                   <>
-                    <Download className="h-4 w-4 mr-2" />
-                    Télécharger
+                    <Search className="h-4 w-4 mr-2" />
+                    Rechercher
                   </>
                 )}
               </Button>
-            </CardFooter>
-          </Card>
-        </div>
-      )}
+            </form>
+          </CardContent>
+        </Card>
 
-      {/* PDF Preview Modal */}
-      {showPdfPreview && scannedLot && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-4xl h-[80vh]">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Aperçu PDF - Lot {scannedLot.harvest.lotNumber}</span>
-                <Button variant="outline" size="sm" onClick={() => setShowPdfPreview(false)}>
-                  <X className="h-4 w-4" />
+        {/* Results Section */}
+        {isLoading ? (
+          <div className="flex items-center justify-center h-[200px]">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        ) : scannedLot ? (
+          <div className="space-y-6">
+            {/* Lot Information */}
+            <Card>
+              <CardHeader className="bg-muted/50">
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Informations du Lot {scannedLot.harvest.lotNumber}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="bg-muted/30 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-muted-foreground">Numéro de Lot</div>
+                    <div className="text-lg font-semibold mt-1">{scannedLot.harvest.lotNumber}</div>
+                  </div>
+                  <div className="bg-muted/30 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-muted-foreground">Date de Récolte</div>
+                    <div className="text-lg font-semibold mt-1">
+                      {new Date(scannedLot.harvest.harvestDate).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="bg-muted/30 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-muted-foreground">Quantité</div>
+                    <div className="text-lg font-semibold mt-1">{scannedLot.packaging.netWeight} kg</div>
+                  </div>
+                  <div className="bg-muted/30 p-4 rounded-lg">
+                    <div className="text-sm font-medium text-muted-foreground">Statut</div>
+                    <div className="text-lg font-semibold mt-1 capitalize">
+                      {scannedLot.delivery.actualDeliveryDate ? 'Livré' : 'En cours'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Scan Statistics */}
+                <div className="mt-6 pt-6 border-t">
+                  <h3 className="text-lg font-semibold mb-4">Statistiques de Scan</h3>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="bg-muted/30 p-4 rounded-lg">
+                      <div className="text-sm font-medium text-muted-foreground">Nombre de Scans</div>
+                      <div className="text-lg font-semibold mt-1 flex items-center gap-2">
+                        <Eye className="h-4 w-4" />
+                        {scanCount}
+                      </div>
+                    </div>
+                    <div className="bg-muted/30 p-4 rounded-lg">
+                      <div className="text-sm font-medium text-muted-foreground">Dernier Scan</div>
+                      <div className="text-lg font-semibold mt-1">
+                        {lastScanDate ? new Date(lastScanDate).toLocaleString() : 'Jamais'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="flex justify-end gap-2 p-6 pt-0 bg-muted/50">
+                <Button 
+                  variant="outline" 
+                  onClick={() => handleGenerateQR('download')}
+                  disabled={isDownloading}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  QR Téléchargement
                 </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="h-full overflow-auto">
-              <PDFViewer
-                lotId={scannedLot.harvest.lotNumber}
-                lotData={scannedLot}
-                onClose={() => setShowPdfPreview(false)}
-              />
+                <Button 
+                  variant="outline" 
+                  onClick={() => handleGenerateQR('view')}
+                >
+                  <QrCode className="h-4 w-4 mr-2" />
+                  QR Consultation
+                </Button>
+                <Button variant="outline" onClick={handleShareQR}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Partager
+                </Button>
+                <Button variant="outline" onClick={showPDF}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Voir PDF
+                </Button>
+                <Button onClick={viewLotDetails}>
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Voir Détails
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex flex-col items-center justify-center h-[200px] text-center text-muted-foreground bg-muted/30 rounded-lg">
+                <Search className="h-12 w-12 mb-4 text-muted-foreground/50" />
+                <p className="text-lg font-medium">Entrez un numéro de lot</p>
+                <p className="text-sm mt-2">pour voir les informations et accéder au PDF</p>
+              </div>
             </CardContent>
           </Card>
-        </div>
-      )}
+        )}
 
-      {/* Global Loading Overlay */}
-      {isDownloading && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="p-6">
-            <div className="flex items-center gap-3">
-              <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-lg font-medium">Génération du PDF...</span>
-            </div>
-          </Card>
-        </div>
-      )}
+        {/* QR Code Modal */}
+        <QRCodeModal />
+
+        {/* Download Confirmation Dialog */}
+        {showDownloadConfirm && scannedLot && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle>Télécharger le PDF</CardTitle>
+                <CardDescription>
+                  Voulez-vous télécharger le rapport PDF pour le lot {scannedLot.harvest.lotNumber} ?
+                </CardDescription>
+              </CardHeader>
+              <CardFooter className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowDownloadConfirm(false)}>
+                  Annuler
+                </Button>
+                <Button onClick={handleDownloadPDF} disabled={isDownloading}>
+                  {isDownloading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Téléchargement...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Télécharger
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        )}
+
+        {/* PDF Preview Modal */}
+        {showPdfPreview && scannedLot && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-4xl h-[80vh]">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Aperçu PDF - Lot {scannedLot.harvest.lotNumber}</span>
+                  <Button variant="outline" size="sm" onClick={() => setShowPdfPreview(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="h-full overflow-auto">
+                <PDFViewer
+                  lotId={scannedLot.harvest.lotNumber}
+                  lotData={scannedLot}
+                  onClose={() => setShowPdfPreview(false)}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Global Loading Overlay */}
+        {isDownloading && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="p-6">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <span className="text-lg font-medium">Génération du PDF...</span>
+              </div>
+            </Card>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

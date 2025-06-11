@@ -12,12 +12,10 @@ export default function GenerateQR() {
 
   const handleGenerate = async () => {
     setLoading(true);
-    const pdfPath = `traceability-reports/${lotId}.pdf`;
-    const pdfRef = ref(storage, pdfPath);
-
     try {
-      const pdfDownloadURL = await getDownloadURL(pdfRef);
-      const qrDataUrl = await QRCode.toDataURL(pdfDownloadURL);
+      // Use the public PDF URL on Firebase Hosting
+      const pdfPublicUrl = `https://fruitsforyou-10acc.web.app/api/avocado-tracking/${lotId}/pdf`;
+      const qrDataUrl = await QRCode.toDataURL(pdfPublicUrl);
       const qrStorageRef = ref(storage, `qr-codes/${lotId}.png`);
 
       await uploadString(qrStorageRef, qrDataUrl, 'data_url');
@@ -28,7 +26,6 @@ export default function GenerateQR() {
       console.error('Error generating QR:', error);
       alert('Failed to generate QR code. Check the lot ID and try again.');
     }
-
     setLoading(false);
   };
 
