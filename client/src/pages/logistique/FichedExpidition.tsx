@@ -246,10 +246,26 @@ export default function FichedExpidition() {
   // Handle input changes
   const handleChange = (rowIndex: number, field: keyof ExpeditionRow, value: string) => {
     const updatedRows = [...rows];
-    updatedRows[rowIndex] = { 
-      ...updatedRows[rowIndex], 
-      [field]: value
-    };
+    
+    // If changing product variety in the first row, apply to all rows
+    if (field === 'produitVariete' && rowIndex === 0) {
+      // Only apply to rows that have NBR de Colis filled
+      updatedRows.forEach((row, index) => {
+        if (row.nbrColis) {
+          updatedRows[index] = {
+            ...row,
+            [field]: value
+          };
+        }
+      });
+    } else {
+      // Normal behavior for other changes
+      updatedRows[rowIndex] = { 
+        ...updatedRows[rowIndex], 
+        [field]: value
+      };
+    }
+    
     setRows(updatedRows);
   };
 
@@ -303,152 +319,152 @@ export default function FichedExpidition() {
         return color[0] + ',' + color[1] + ',' + color[2];  // Returns "R,G,B" format
       };
       
-      // Add page border with rounded corners
-      doc.setDrawColor(darkGreen[0], darkGreen[1], darkGreen[2]);
-      doc.setLineWidth(1);
-      doc.roundedRect(5, 5, pageWidth - 10, pageHeight - 10, 3, 3);
+      // Remove the page border
+      // doc.setDrawColor(darkGreen[0], darkGreen[1], darkGreen[2]);
+      // doc.setLineWidth(1);
+      // doc.roundedRect(5, 5, pageWidth - 10, pageHeight - 10, 3, 3);
       
       // Add logo with simplified positioning and size
-      doc.addImage(logoBase64, 'PNG', 10, 10, 25, 25);
+      doc.addImage(logoBase64, 'PNG', 10, 5, 20, 20);
 
       // Add header title section with minimal styling
       doc.setFont("helvetica", "bold");
       doc.setFontSize(16);
       doc.setTextColor(0, 0, 0);
-      doc.text('Fiche d\'expédition', 40, 20);
+      doc.text('Fiche d\'expédition', 40, 15);
 
       // Add right section with MP ENR info in a simple box
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      doc.text('MP ENR 06', 160, 15);
-      doc.text('Version : 01', 160, 20);
-      doc.text('Date : 01/07/2023', 160, 25);
+      doc.text('MP ENR 06', 160, 12);
+      doc.text('Version : 01', 160, 17);
+      doc.text('Date : 01/07/2023', 160, 22);
 
       // Add a simple line separator
       doc.setDrawColor(200, 200, 200);
       doc.setLineWidth(0.5);
-      doc.line(10, 40, pageWidth - 10, 40);
+      doc.line(10, 30, pageWidth - 10, 30);
       
       // Create the main form sections with improved spacing
-      const startY = 55;
+      const startY = 35;
       doc.setFontSize(9);
       
       // First row of fields with enhanced styling
       // Date field
       doc.setFillColor(250, 250, 250);
-      doc.roundedRect(10, startY, 35, 15, 2, 2, 'F');
-      doc.roundedRect(10, startY, 35, 15, 2, 2);
+      doc.roundedRect(10, startY, 35, 12, 2, 2, 'F');
+      doc.roundedRect(10, startY, 35, 12, 2, 2);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(darkGreen[0], darkGreen[1], darkGreen[2]);
-      doc.text('Date expédition :', 12, startY + 5);
+      doc.text('Date expédition :', 12, startY + 4);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(gray[0], gray[1], gray[2]);
-      doc.text(headerData.date || '', 12, startY + 11);
+      doc.text(headerData.date || '', 12, startY + 9);
       
       // Hour field with similar styling
       doc.setFillColor(250, 250, 250);
-      doc.roundedRect(45, startY, 25, 15, 2, 2, 'F');
-      doc.roundedRect(45, startY, 25, 15, 2, 2);
+      doc.roundedRect(45, startY, 25, 12, 2, 2, 'F');
+      doc.roundedRect(45, startY, 25, 12, 2, 2);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(darkGreen[0], darkGreen[1], darkGreen[2]);
-      doc.text('Heure:', 47, startY + 5);
+      doc.text('Heure:', 47, startY + 4);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(gray[0], gray[1], gray[2]);
-      doc.text(headerData.heure || '', 47, startY + 11);
+      doc.text(headerData.heure || '', 47, startY + 9);
       
       // Transporter field with enhanced styling
       doc.setFillColor(250, 250, 250);
-      doc.roundedRect(70, startY, 45, 15, 2, 2, 'F');
-      doc.roundedRect(70, startY, 45, 15, 2, 2);
+      doc.roundedRect(70, startY, 45, 12, 2, 2, 'F');
+      doc.roundedRect(70, startY, 45, 12, 2, 2);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(darkGreen[0], darkGreen[1], darkGreen[2]);
-      doc.text('Nom du', 72, startY + 5);
-      doc.text('transporteur :', 72, startY + 9);
+      doc.text('Nom du', 72, startY + 4);
+      doc.text('transporteur :', 72, startY + 8);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(gray[0], gray[1], gray[2]);
-      doc.text(headerData.transporteur || '', 72, startY + 13);
+      doc.text(headerData.transporteur || '', 72, startY + 11);
       
       // Registration field with enhanced styling
       doc.setFillColor(250, 250, 250);
-      doc.roundedRect(115, startY, 45, 15, 2, 2, 'F');
-      doc.roundedRect(115, startY, 45, 15, 2, 2);
-      doc.text('Matricule', 117, startY + 5);
-      doc.text('camion :', 117, startY + 9);
-      doc.text(headerData.matricule || '', 117, startY + 13);
+      doc.roundedRect(115, startY, 45, 12, 2, 2, 'F');
+      doc.roundedRect(115, startY, 45, 12, 2, 2);
+      doc.text('Matricule', 117, startY + 4);
+      doc.text('camion :', 117, startY + 8);
+      doc.text(headerData.matricule || '', 117, startY + 11);
       
-      doc.rect(160, startY, 40, 15); // Temperature field
-      doc.text('T° camion :', 162, startY + 5);
-      doc.text(`${headerData.tempCamion || ''}°C`, 162, startY + 11);
+      doc.rect(160, startY, 40, 12); // Temperature field
+      doc.text('T° camion :', 162, startY + 4);
+      doc.text(`${headerData.tempCamion || ''}°C`, 162, startY + 9);
       
       // Second row - Checkboxes section
-      const checkY = startY + 15;
+      const checkY = startY + 12;
       const checkboxSize = 3;
       
       // Hygiene section
-      doc.rect(10, checkY, 60, 15);
-      doc.text('Hygiène du camion :', 12, checkY + 7);
+      doc.rect(10, checkY, 60, 12);
+      doc.text('Hygiène du camion :', 12, checkY + 6);
       
       // Draw checkboxes for Hygiene
-      doc.rect(45, checkY + 4, checkboxSize, checkboxSize);
-      doc.text('Bon', 50, checkY + 6.5);
-      doc.rect(45, checkY + 9, checkboxSize, checkboxSize);
-      doc.text('Mauvais', 50, checkY + 11.5);
+      doc.rect(45, checkY + 3, checkboxSize, checkboxSize);
+      doc.text('Bon', 50, checkY + 5);
+      doc.rect(45, checkY + 7, checkboxSize, checkboxSize);
+      doc.text('Mauvais', 50, checkY + 9);
       
       if (headerData.hygiene === 'Bon') {
-        doc.line(45, checkY + 4, 48, checkY + 7);
-        doc.line(48, checkY + 4, 45, checkY + 7);
+        doc.line(45, checkY + 3, 48, checkY + 6);
+        doc.line(48, checkY + 3, 45, checkY + 6);
       }
       if (headerData.hygiene === 'Mauvais') {
-        doc.line(45, checkY + 9, 48, checkY + 12);
-        doc.line(48, checkY + 9, 45, checkY + 12);
+        doc.line(45, checkY + 7, 48, checkY + 10);
+        doc.line(48, checkY + 7, 45, checkY + 10);
       }
       
       // Odeur section
-      doc.rect(70, checkY, 45, 15);
-      doc.text('Odeur :', 72, checkY + 7);
+      doc.rect(70, checkY, 45, 12);
+      doc.text('Odeur :', 72, checkY + 6);
       
       // Draw checkboxes for Odeur
-      doc.rect(90, checkY + 4, checkboxSize, checkboxSize);
-      doc.text('Bon', 95, checkY + 6.5);
-      doc.rect(90, checkY + 9, checkboxSize, checkboxSize);
-      doc.text('Mauvais', 95, checkY + 11.5);
+      doc.rect(90, checkY + 3, checkboxSize, checkboxSize);
+      doc.text('Bon', 95, checkY + 5);
+      doc.rect(90, checkY + 7, checkboxSize, checkboxSize);
+      doc.text('Mauvais', 95, checkY + 9);
       
       if (headerData.odeur === 'Bon') {
-        doc.line(90, checkY + 4, 93, checkY + 7);
-        doc.line(93, checkY + 4, 90, checkY + 7);
+        doc.line(90, checkY + 3, 93, checkY + 6);
+        doc.line(93, checkY + 3, 90, checkY + 6);
       }
       if (headerData.odeur === 'Mauvais') {
-        doc.line(90, checkY + 9, 93, checkY + 12);
-        doc.line(93, checkY + 9, 90, checkY + 12);
+        doc.line(90, checkY + 7, 93, checkY + 10);
+        doc.line(93, checkY + 7, 90, checkY + 10);
       }
       
       // Destination
-      doc.rect(115, checkY, 45, 15);
-      doc.text('Nom client :', 117, checkY + 5);
-      doc.text(clientName || '', 117, checkY + 11);
+      doc.rect(115, checkY, 45, 12);
+      doc.text('Nom client :', 117, checkY + 4);
+      doc.text(clientName || '', 117, checkY + 9);
       
-      doc.rect(160, checkY, 40, 15);
-      doc.text('Destination :', 162, checkY + 5);
-      doc.text(headerData.destination || '', 162, checkY + 11);
+      doc.rect(160, checkY, 40, 12);
+      doc.text('Destination :', 162, checkY + 4);
+      doc.text(headerData.destination || '', 162, checkY + 9);
       
       // Thermo king status
-      doc.rect(10, checkY + 15, 190, 15);
-      doc.text('État de fonctionnement du', 12, checkY + 22);
-      doc.text('thermo king :', 12, checkY + 26);
+      doc.rect(10, checkY + 12, 190, 12);
+      doc.text('État de fonctionnement du', 12, checkY + 18);
+      doc.text('thermo king :', 12, checkY + 22);
       
       // Draw checkboxes for Thermo King
-      doc.rect(70, checkY + 21, checkboxSize, checkboxSize);
-      doc.text('Bon', 75, checkY + 23.5);
-      doc.rect(90, checkY + 21, checkboxSize, checkboxSize);
-      doc.text('Mauvais', 95, checkY + 23.5);
+      doc.rect(70, checkY + 17, checkboxSize, checkboxSize);
+      doc.text('Bon', 75, checkY + 19);
+      doc.rect(90, checkY + 17, checkboxSize, checkboxSize);
+      doc.text('Mauvais', 95, checkY + 19);
       
       if (headerData.thermokingEtat === 'Bon') {
-        doc.line(70, checkY + 21, 73, checkY + 24);
-        doc.line(73, checkY + 21, 70, checkY + 24);
+        doc.line(70, checkY + 17, 73, checkY + 20);
+        doc.line(73, checkY + 17, 70, checkY + 20);
       }
       if (headerData.thermokingEtat === 'Mauvais') {
-        doc.line(90, checkY + 21, 93, checkY + 24);
-        doc.line(93, checkY + 21, 90, checkY + 24);
+        doc.line(90, checkY + 17, 93, checkY + 20);
+        doc.line(93, checkY + 17, 90, checkY + 20);
       }
       
       // Data table with enhanced styling
@@ -457,18 +473,7 @@ export default function FichedExpidition() {
       // Add a decorative separator before the table
       doc.setDrawColor(darkGreen[0], darkGreen[1], darkGreen[2]);
       doc.setLineWidth(0.5);
-      // Use proper type casting for jsPDF to access setLineDash
-      // @ts-ignore - setLineDash exists in jsPDF but TypeScript definitions might be outdated
-      if (typeof doc.setLineDash === 'function') {
-        // @ts-ignore
-        doc.setLineDash([3, 3]);
-        doc.line(10, tableY - 5, pageWidth - 10, tableY - 5);
-        // @ts-ignore
-        doc.setLineDash([]);
-      } else {
-        // Fallback if setLineDash is not available
-        doc.line(10, tableY - 5, pageWidth - 10, tableY - 5);
-      }
+      doc.line(10, tableY - 5, pageWidth - 10, tableY - 5);
       
       const filteredRows = rows.filter(row => 
         row.nbrColis || row.produitVariete || row.calibre || 
@@ -481,14 +486,14 @@ export default function FichedExpidition() {
         startY: tableY,
         margin: { left: 10, right: 10 },
         head: [[
-          { content: 'N° de\npalette', styles: { cellWidth: 20, cellPadding: 4 } },
-          { content: 'NBR de\nColis', styles: { cellWidth: 20, cellPadding: 4 } },
-          { content: 'Produit/\nVariété', styles: { cellWidth: 30, cellPadding: 4 } },
-          { content: 'Calibre', styles: { cellWidth: 20, cellPadding: 4 } },
-          { content: 'T° produit', styles: { cellWidth: 20, cellPadding: 4 } },
-          { content: 'État de la palette', styles: { cellWidth: 25, cellPadding: 4 } },
-          { content: 'Conformité d\'\u00e9tiquettes\n(C/NC)', styles: { cellWidth: 30, cellPadding: 4 } },
-          { content: 'Décision\n(C/NC)', styles: { cellWidth: 25, cellPadding: 4 } }
+          { content: 'N° de\npalette', styles: { cellWidth: 20, cellPadding: 2 } },
+          { content: 'NBR de\nColis', styles: { cellWidth: 20, cellPadding: 2 } },
+          { content: 'Produit/\nVariété', styles: { cellWidth: 30, cellPadding: 2 } },
+          { content: 'Calibre', styles: { cellWidth: 20, cellPadding: 2 } },
+          { content: 'T° produit', styles: { cellWidth: 20, cellPadding: 2 } },
+          { content: 'État de la palette', styles: { cellWidth: 25, cellPadding: 2 } },
+          { content: 'Conformité d\'\u00e9tiquettes\n(C/NC)', styles: { cellWidth: 30, cellPadding: 2 } },
+          { content: 'Décision\n(C/NC)', styles: { cellWidth: 25, cellPadding: 2 } }
         ]],
         body: filteredRows.map((row, index) => [
           { content: index + 1, styles: { halign: 'center' } },
@@ -501,24 +506,24 @@ export default function FichedExpidition() {
           { content: row.dessiccation, styles: { halign: 'center' } }
         ]),
         styles: {
-          fontSize: 9,
-          cellPadding: { top: 4, right: 3, bottom: 4, left: 3 },
+          fontSize: 8,
+          cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
           lineWidth: 0.1,
           lineColor: [0, 0, 0],
           textColor: [0, 0, 0],
-          minCellHeight: 15,
+          minCellHeight: 6,
           valign: 'middle',
           overflow: 'linebreak'
         },
         headStyles: {
           fillColor: [...lightGreen],
           textColor: [0, 0, 0],
-          fontSize: 9,
+          fontSize: 8,
           fontStyle: 'bold',
           halign: 'center',
           valign: 'middle',
-          cellPadding: { top: 5, right: 3, bottom: 5, left: 3 },
-          minCellHeight: 20
+          cellPadding: { top: 2, right: 2, bottom: 2, left: 2 },
+          minCellHeight: 8
         },
         columnStyles: {
           0: { fillColor: [...lightGreen], halign: 'center', fontStyle: 'bold' }
@@ -531,47 +536,39 @@ export default function FichedExpidition() {
           1: { fillColor: lightGreen },  // Second row green
           2: { fillColor: lightGreen }   // Third row green
         },
-        theme: 'grid'
+        theme: 'grid',
+        didDrawPage: function(data: any) {
+          // Add page number
+          doc.setFontSize(8);
+          doc.text(
+            `Page ${data.pageCount}`,
+            data.settings.margin.left,
+            doc.internal.pageSize.height - 10
+          );
+        }
       });
       
-      // Add signature section with enhanced styling
-      const finalY = (doc as any).lastAutoTable.finalY + 25;
+      // Add simple signature section
+      const finalY = (doc as any).lastAutoTable.finalY + 20;
       
-      // Add signature boxes
-      doc.setDrawColor(darkGreen[0], darkGreen[1], darkGreen[2]);
-      doc.setFillColor(250, 250, 250);
-      
-      // Left signature box
-      doc.roundedRect(10, finalY, 85, 40, 2, 2, 'F');
-      doc.roundedRect(10, finalY, 85, 40, 2, 2);
+      // Left signature
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
-      doc.setTextColor(darkGreen[0], darkGreen[1], darkGreen[2]);
-      doc.text('Visa de Responsable de chargement', 15, finalY + 7);
-      doc.setLineWidth(0.1);
-      doc.line(15, finalY + 30, 90, finalY + 30);
-      doc.setFontSize(8);
+      doc.text('Visa de Responsable de chargement', 15, finalY);
       doc.setFont("helvetica", "normal");
-      doc.text('Signature et cachet', 15, finalY + 37);
+      doc.setFontSize(8);
+      doc.text('Signature et cachet', 15, finalY + 5);
       
-      // Right signature box
-      doc.roundedRect(pageWidth - 95, finalY, 85, 40, 2, 2, 'F');
-      doc.roundedRect(pageWidth - 95, finalY, 85, 40, 2, 2);
+      // Right signature
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
-      doc.text('Visa de Responsable Qualité', pageWidth - 90, finalY + 7);
-      doc.line(pageWidth - 90, finalY + 30, pageWidth - 15, finalY + 30);
-      doc.setFontSize(8);
+      doc.text('Visa de Responsable Qualité', pageWidth - 90, finalY);
       doc.setFont("helvetica", "normal");
-      doc.text('Signature et cachet', pageWidth - 90, finalY + 37);
+      doc.setFontSize(8);
+      doc.text('Signature et cachet', pageWidth - 90, finalY + 5);
       
       // Add footer
-      const footerY = pageHeight - 15;
-      doc.setFontSize(8);
-      doc.setTextColor(gray[0], gray[1], gray[2]);
-      doc.text(companyName, 10, footerY);
-      doc.text(`Document généré le ${format(new Date(), 'dd/MM/yyyy à HH:mm')}`, pageWidth/2, footerY, { align: 'center' });
-      doc.text(`Page 1/1`, pageWidth - 20, footerY, { align: 'right' });
+
       
       // Convert PDF to blob for storage and download
       const pdfOutput = doc.output('arraybuffer');
@@ -1178,7 +1175,10 @@ export default function FichedExpidition() {
                       <select
                         value={row.produitVariete}
                         onChange={(e) => handleChange(rowIndex, 'produitVariete', e.target.value)}
-                        className="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all appearance-none bg-white"
+                        className={`w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all appearance-none ${
+                          !row.nbrColis ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
+                        }`}
+                        disabled={!row.nbrColis}
                       >
                         <option value="">Sélectionner</option>
                         {productVarieties.map((variety) => (

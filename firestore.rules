@@ -2,22 +2,23 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
     // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
-    
+
     function isValidFarmData() {
       return request.resource.data.name is string
         && request.resource.data.location is string
         && request.resource.data.code is string
         && request.resource.data.active is bool;
     }
-    
+
     function isValidAvocadoTrackingData() {
       let data = request.resource.data;
       return data.harvest is map
@@ -67,7 +68,7 @@ service cloud.firestore {
         && data.delivery.clientLocation is string
         && data.delivery.notes is string;
     }
-    
+
     function isValidWarehouseData() {
       return request.resource.data.name is string
         && request.resource.data.location is string
@@ -138,121 +139,115 @@ service cloud.firestore {
         && data.delivery.notes is string;
     }
 
-    // Categories collection
+    // ✅ Avocado Orders collection
+    match /avocado_orders/{orderId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Categories
     match /categories/{documentId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() 
+      allow create: if isAuthenticated()
         && request.resource.data.name is string
         && request.resource.data.createdAt is timestamp
         && request.resource.data.createdBy == request.auth.uid;
-      allow update, delete: if isAuthenticated() 
+      allow update, delete: if isAuthenticated()
         && resource.data.createdBy == request.auth.uid;
     }
-    
-    // Documents collection
+
+    // Documents
     match /documents/{documentId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() 
+      allow create: if isAuthenticated()
         && request.resource.data.name is string
         && request.resource.data.categoryId is string
         && request.resource.data.url is string
         && request.resource.data.uploadedAt is timestamp
         && request.resource.data.uploadedBy == request.auth.uid;
-      allow update, delete: if isAuthenticated() 
+      allow update, delete: if isAuthenticated()
         && resource.data.uploadedBy == request.auth.uid;
     }
 
-    // Default deny all
-    match /{document=**} {
-      allow read, write: if false;
-    }
-    
-    // Users collection
+    // Users
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isOwner(userId);
       allow update, delete: if isAuthenticated() && isOwner(userId);
     }
-    
-    // Farms collection
+
+    // Farms
     match /farms/{documentId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidFarmData();
       allow update: if isAuthenticated() && isValidFarmData();
       allow delete: if isAuthenticated();
     }
-    
-    // Lots collection
+
+    // Lots
     match /lots/{documentId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidLotData();
       allow update: if isAuthenticated() && isValidLotData();
       allow delete: if isAuthenticated();
     }
-    
-    // Allow public read access to lots collection
+
+    // Public read access to lots
     match /lots/{document=**} {
       allow read: if true;
       allow write: if isAuthenticated();
     }
-    
-    // Warehouses collection
+
+    // Warehouses
     match /warehouses/{documentId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidWarehouseData();
       allow update: if isAuthenticated() && isValidWarehouseData();
       allow delete: if isAuthenticated();
     }
-    
-    // Avocado tracking collection - public read access
+
+    // Avocado tracking
     match /avocado-tracking/{documentId} {
-      allow read: if true; // Allow public read access
+      allow read: if true;
       allow write: if isAuthenticated();
     }
-    
-    // PDF reports collection
+
+    // PDF reports
     match /pdfReports/{documentId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.lotNumber is string;
       allow update: if isAuthenticated() && request.resource.data.lotNumber is string;
       allow delete: if isAuthenticated();
     }
-    
-    // Inventory collection
-    match /inventory/{documentId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-    }
 
-    // Entrepots collection
-    match /entrepots/{documentId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && request.auth.uid != null;
-    }
-
-    // Boxes collection
-    match /boxes/{boxId} {
-      allow read: if isAuthenticated() && isOwner(resource.data.userId);
-      allow create: if isAuthenticated() 
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.title is string
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.lastModified is timestamp;
-      allow update: if isAuthenticated() 
-        && resource.data.userId == request.auth.uid
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.lastModified is timestamp;
-      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
-    }
-
-    // Inventory collection rules
+    // Inventory
     match /inventory/{itemId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated();
     }
 
-    // Consumption collection rules
+    // Entrepots
+    match /entrepots/{documentId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated() && request.auth.uid != null;
+    }
+
+    // Boxes
+    match /boxes/{boxId} {
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.lastModified is timestamp;
+      allow update: if isAuthenticated()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.lastModified is timestamp;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Consumption
     match /consumption/{consumptionId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
@@ -260,53 +255,86 @@ service cloud.firestore {
       allow list: if isAuthenticated();
     }
 
-    // Add rules for consumption history
+    // Consumption history
     match /consumptionHistory/{historyId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated();
     }
 
-    // Items collection rules
+    // Items
     match /items/{itemId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
       allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
     }
 
-    // Box items collection
+    // Box items
     match /boxItems/{itemId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated();
+    }
+
+    // Containers
+    match /containers/{containerId} {
+      allow read: if isAuthenticated() &&
+        (!exists(/databases/$(database)/documents/containers/$(containerId)) ||
+         request.auth.uid == resource.data.userId);
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() &&
+        request.auth.uid == resource.data.userId;
+    }
+
+    // Logistics archives
+    match /logistics-archives/{docId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && isOwner(resource.data.userId);
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+    }
+
+    // Archive boxes
+    match /archive-boxes/{boxId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      // Files subcollection
+      match /files/{fileId} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated() && get(/databases/$(database)/documents/archive-boxes/$(boxId)).data.userId == request.auth.uid;
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Helper function to check if user is authenticated
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    // Helper function to check if user owns the file
+
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-    // Helper function to check if request is from development server
     function isDevelopmentServer() {
       return request.origin.matches('http://localhost:[0-9]+');
     }
 
-    // Documents folder rules
     match /documents/{userId}/{fileName} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && isOwner(userId) && isDevelopmentServer();
     }
 
-    // Default deny all other access
     match /{allPaths=**} {
       allow read, write: if false;
     }

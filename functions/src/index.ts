@@ -1,91 +1,63 @@
-import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
-import cors from "cors";
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+const cors = require("cors")({ origin: true }); // Allow all origins temporarily for MVP
 
 admin.initializeApp();
 
-// Configure CORS middleware
-const corsHandler = cors({
-  origin: [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:3000",
-    "https://fruitsforyou-10acc.web.app",
-    "https://fruitsforyou-10acc.firebaseapp.com",
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Origin", "Accept"],
-  credentials: true,
-  maxAge: 3600,
-});
+interface Request {
+  method: string;
+  body: {
+    file: string;
+    path: string;
+    metadata?: {
+      contentType?: string;
+      [key: string]: any;
+    };
+  };
+}
 
-export const uploadFile = functions.https.onRequest((req, res) => {
-  // Handle preflight requests
-  if (req.method === "OPTIONS") {
-    corsHandler(req, res, () => {
-      res.status(204).send("");
-    });
-    return;
-  }
+interface Response {
+  status: (code: number) => Response;
+  send: (body: string) => Response;
+  json: (body: any) => Response;
+}
 
-  // Handle actual request
-  corsHandler(req, res, async () => {
+exports.uploadFile = functions.https.onRequest((req: Request, res: Response) => {
+  cors(req, res, async () => {
     try {
       if (req.method !== "POST") {
-        throw new Error("Method not allowed");
+        return res.status(405).send("Method Not Allowed");
       }
 
-      const { fileData, boxId, itemName, type, userId } = req.body;
-
-      if (!fileData || !boxId || !itemName || !type || !userId) {
-        throw new Error("Missing required fields");
+      const { file, path, metadata } = req.body;
+      if (!file || !path) {
+        return res.status(400).send("Missing required fields");
       }
 
-      // Convert base64 to buffer
-      const buffer = Buffer.from(fileData.split(",")[1], "base64");
-
-      // Upload to Storage
+      const buffer = Buffer.from(file, "base64");
       const bucket = admin.storage().bucket();
-      const fileName = `${Date.now()}_${itemName}`;
-      const file = bucket.file(`boxes/${boxId}/${fileName}`);
-      await file.save(buffer, {
+      const fileRef = bucket.file(path);
+
+      await fileRef.save(buffer, {
         metadata: {
-          contentType: type,
+          contentType: metadata?.contentType || "application/octet-stream",
           metadata: {
-            userId,
-            boxId,
+            ...metadata,
           },
         },
       });
 
-      // Get download URL
-      const [url] = await file.getSignedUrl({
+      const [url] = await fileRef.getSignedUrl({
         action: "read",
-        expires: "03-01-2500", // Far future expiration
+        expires: "03-01-2030",
       });
 
-      // Add to Firestore
-      const db = admin.firestore();
-      const itemRef = await db.collection("boxItems").add({
-        boxId,
-        name: itemName,
-        type,
-        fileUrl: url,
-        userId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      res.status(200).json({
-        success: true,
-        itemId: itemRef.id,
-        fileUrl: url,
-      });
-    } catch (error) {
-      console.error("Upload error:", error);
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : "Upload failed",
-      });
+      return res.status(200).json({ url });
+    } catch (err) {
+      console.error("Upload error:", err);
+      return res.status(500).send("Internal Server Error");
     }
   });
 });
+
+export {};

@@ -23,7 +23,7 @@ import inventory from "./pages/logistique/inventory";
 import qualitycontrol from "./pages/quality/qualitycontrol";
 import personnelmanagement from "./pages/personnele/personnelmanagement";
 import calculedeconsomation from "./pages/production/calculedeconsomation";
-import history from "./pages/logistique/history";
+import LogisticsArchive from "./pages/logistique/history";
 import reception from "./pages/recaption/reception";
 import newEntry from "./pages/recaption/newentry";
 import Horaires from "./pages/personnele/Horaires";
@@ -35,10 +35,15 @@ import Rapportqualité from "@/pages/quality/Rapportqualité";
 import Archivagedescontroles from "@/pages/quality/Archivagedescontroles";
 import ReportsPagee from "@/pages/tracability/ReportsPage";
 import FarmDetailPage from "@/pages/farm-detail-page";
-import DocumentArchive from "@/pages/archive/DocumentArchive";
 import NewProductPage from "@/pages/new-product-page";
+import historiquedemaintenance from "@/pages/mantenance/historiquedemaintenance";
 import { auth } from '@/lib/firebase';
-
+import GererCommandesClient from "@/pages/orders/gerer-commandes-client";
+import OrderTrackingView from "@/pages/orders/order-tracking";
+import AutomatisationDeMaintenance from "@/pages/maintenance/automatisation-maintenance";
+import PiecesDeRechangeMaintenance from "@/pages/maintenance/pieces-rechange-maintenance";
+import CommunicationDashboard from "@/pages/communication/communication-dash";
+import DocumentArchive from "@/pages/archive/DocumentArchive"
 // Public routes that don't require authentication
 function PublicRoutes() {
   return (
@@ -67,6 +72,9 @@ function AuthenticatedRoutes() {
         <Route path="/new-entry" component={NewEntryPage} />
         <Route path="/new-product" component={NewProductPage} />
         <Route path="/scan" component={ScanPage} />
+        <Route path="/communication-dashboard" component={CommunicationDashboard} />
+        <Route path="/gererlescommandesclinet" component={GererCommandesClient} />
+        <Route path="/commandeclinet" component={OrderTrackingView} />
         <Route path="/lots" component={LotsPage} />
         <Route path="/farms" component={FarmsPage} />
         <Route path="/farms/:id" component={FarmDetailPage} />
@@ -81,7 +89,7 @@ function AuthenticatedRoutes() {
         <Route path="/qualitycontrol" component={qualitycontrol} />
         <Route path="/personnelmanagement" component={personnelmanagement} />
         <Route path="/calculedeconsomation" component={calculedeconsomation} />
-        <Route path="/logistique/history" component={history} />
+        <Route path="/logistique/history" component={DocumentArchive} />
         <Route path="/reception" component={reception} />
         <Route path="/new" component={newEntry} />
         <Route path="/schedules" component={Horaires} />
@@ -92,6 +100,13 @@ function AuthenticatedRoutes() {
         <Route path="/Archivagedescontroles" component={Archivagedescontroles} />
         <Route path="/Archivagedesfacture" component={Archivagedesfacture} />
         <Route path="/DocumentArchive" component={DocumentArchive} />
+        {/* Client Orders */}
+
+        {/* Maintenance Routes */}
+        <Route path="/automatisationdemaintenance" component={AutomatisationDeMaintenance} />
+        <Route path="/piecesderechangemaintenance" component={PiecesDeRechangeMaintenance} />
+        <Route path="/dossieredemaintenance" component={historiquedemaintenance} />
+        
         <Route path="*" component={NotFound} />
       </Switch>
     </MainLayout>

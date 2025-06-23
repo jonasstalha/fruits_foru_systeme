@@ -3,7 +3,7 @@ import { X, Search, Plus, ArrowLeft, Upload, Folder, FileText, File, Calendar, T
 import DocumentCard from '@/components/ui/document-card';
 import TagBadge from '@/components/ui/tag-badge';
 import StatCard from '@/components/ui/stat-card';
-import { collection, addDoc, getDocs, query, where, orderBy, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, orderBy, deleteDoc, doc, updateDoc, serverTimestamp, Timestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject, uploadBytesResumable } from 'firebase/storage';
 import { firestore, storage, auth } from '@/lib/firebase';
 
@@ -50,6 +50,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 
 interface ArchiveItem {
   name: string;
@@ -74,6 +75,9 @@ interface ArchiveItem {
   calibers?: string[];
   avocadoCount?: number;
   packagingDate?: string;
+  uploadedAt?: Timestamp;
+  uploadedBy?: string;
+  storagePath?: string;
 }
 
 interface ArchiveBox {
@@ -95,6 +99,16 @@ interface UploadProgress {
   progress: number;
   status: 'uploading' | 'completed' | 'error';
   error?: string;
+}
+
+interface Container {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  factures: ArchiveItem[];
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -151,6 +165,10 @@ const Archivagedesfacture: React.FC = () => {
   const [selectedCalibers, setSelectedCalibers] = useState<string[]>([]);
   const [avocadoCount, setAvocadoCount] = useState<number>(0);
   const [packagingDate, setPackagingDate] = useState<string>('');
+  const [containers, setContainers] = useState<Container[]>([]);
+  const [selectedContainer, setSelectedContainer] = useState<string | null>(null);
+  const [newContainerName, setNewContainerName] = useState<string>('');
+  const [isCreatingContainer, setIsCreatingContainer] = useState<boolean>(false);
 
   // Add these constants for the selection options
   const BOX_WEIGHTS = ['4kg', '10kg'];
@@ -158,41 +176,163 @@ const Archivagedesfacture: React.FC = () => {
   const BOX_TYPES = ['Caisse plastique', 'Box'];
   const CALIBERS = ['12', '14', '16', '18', '20', '22', '24', '26', '28', '30'];
 
+  // Initialize boxes from localStorage on component mount
   useEffect(() => {
-    const fetchBoxes = async () => {
+    const savedBoxes = localStorage.getItem('archiveBoxes');
+    if (savedBoxes) {
       try {
-        if (!auth.currentUser) return;
-        
-        const boxesRef = collection(firestore, 'boxes');
-        const q = query(
-          boxesRef,
-          where('userId', '==', auth.currentUser.uid),
-          orderBy('createdAt', 'desc')
-        );
-        
-        const querySnapshot = await getDocs(q);
-        const fetchedBoxes = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as ArchiveBox[];
-        
-        setBoxes(fetchedBoxes);
+        const parsedBoxes = JSON.parse(savedBoxes);
+        setBoxes(parsedBoxes);
       } catch (error) {
-        console.error('Error fetching boxes:', error);
-        showNotification('Erreur lors du chargement des boîtes', 'error');
+        console.error('Error parsing saved boxes:', error);
+        setBoxes([]);
       }
-    };
-
-    fetchBoxes();
+    }
   }, []);
 
   useEffect(() => {
     localStorage.setItem('archiveBoxes', JSON.stringify(boxes));
   }, [boxes]);
 
+  // Load containers on component mount
+  useEffect(() => {
+    loadContainers();
+  }, []);
+
+  // Add authentication check
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        console.log('User is signed in:', user.uid);
+        loadContainers();
+      } else {
+        console.log('No user is signed in');
+        setContainers([]);
+        showNotification('Veuillez vous connecter pour accéder aux conteneurs', 'error');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []); // Empty dependency array means this runs once on mount
+
   const showNotification = (message: string, type: string) => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3000);
+  };
+
+  const loadContainers = async () => {
+    try {
+      // Check if user is authenticated
+      const user = auth.currentUser;
+      if (!user) {
+        console.error('No authenticated user found');
+        showNotification('Vous devez être connecté pour accéder aux conteneurs', 'error');
+        return;
+      }
+
+      console.log('Loading containers for user:', user.uid);
+      
+      const containersRef = collection(firestore, 'containers');
+      // Query containers where userId matches the current user
+      const q = query(
+        containersRef,
+        where('userId', '==', user.uid)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      console.log('Query snapshot size:', querySnapshot.size);
+      
+      const loadedContainers = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate().toISOString() || new Date().toISOString(),
+        updatedAt: doc.data().updatedAt?.toDate().toISOString() || new Date().toISOString(),
+      })) as Container[];
+      
+      // Sort the containers client-side
+      loadedContainers.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      console.log('Loaded containers:', loadedContainers);
+
+      // If no containers exist, create a test container
+      if (loadedContainers.length === 0) {
+        console.log('No containers found, creating a test container...');
+        const testContainer = {
+          name: 'Test Container',
+          description: 'A test container for factures',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          userId: user.uid,
+          factures: []
+        };
+
+        const docRef = await addDoc(collection(firestore, 'containers'), testContainer);
+        console.log('Test container created with ID:', docRef.id);
+
+        // Add the new container to the state
+        setContainers([{
+          id: docRef.id,
+          ...testContainer,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }]);
+      } else {
+        setContainers(loadedContainers);
+      }
+    } catch (error) {
+      console.error('Error loading containers:', error);
+      // Log more details about the error
+      if (error instanceof Error) {
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+      showNotification('Erreur lors du chargement des conteneurs', 'error');
+    }
+  };
+
+  const createContainer = async () => {
+    if (!newContainerName.trim()) {
+      showNotification('Le nom du conteneur est requis', 'error');
+      return;
+    }
+
+    const userId = auth.currentUser?.uid;
+    if (!userId) {
+      showNotification('Vous devez être connecté pour créer un conteneur', 'error');
+      return;
+    }
+
+    try {
+      const containerRef = await addDoc(collection(firestore, 'containers'), {
+        name: newContainerName,
+        description: '',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        userId,
+        factures: []
+      });
+
+      const newContainer: Container = {
+        id: containerRef.id,
+        name: newContainerName,
+        description: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        userId,
+        factures: []
+      };
+
+      setContainers(prev => [newContainer, ...prev]);
+      setNewContainerName('');
+      setIsCreatingContainer(false);
+      showNotification('Conteneur créé avec succès', 'success');
+    } catch (error) {
+      console.error('Error creating container:', error);
+      showNotification('Erreur lors de la création du conteneur', 'error');
+    }
   };
 
   const handleCreateBox = async () => {
@@ -227,69 +367,129 @@ const Archivagedesfacture: React.FC = () => {
     }
   };
 
-  const handleAddItemToBox = async (boxIndex: number, name: string, type: string, file?: File): Promise<void> => {
+  const handleAddItemToBox = async (boxId: string, file: File) => {
     try {
-      const box = boxes[boxIndex];
-      let fileUrl = '';
-      let fileSize = '';
+      console.log('Starting file upload for box:', boxId);
+      console.log('File details:', {
+        name: file.name,
+        type: file.type,
+        size: file.size
+      });
 
-      if (file) {
-        const timestamp = Date.now();
-        const uniqueFileName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-        const storagePath = `boxes/${box.id}/${uniqueFileName}`;
-        const storageRef = ref(storage, storagePath);
-
-        const snapshot = await uploadBytes(storageRef, file, {
-          contentType: file.type,
-          customMetadata: {
-            userId: auth.currentUser?.uid || '',
-            boxId: box.id
-          }
-        });
-
-        fileUrl = await getDownloadURL(snapshot.ref);
-        fileSize = formatFileSize(file.size);
+      if (!auth.currentUser) {
+        console.error('No authenticated user found');
+        throw new Error('User must be authenticated to upload files');
       }
 
-      const newItem: ArchiveItem = {
-        name,
-        date: new Date().toLocaleDateString(),
-        type,
-        id: generateId(),
-        category: DOCUMENT_CATEGORIES[0].id,
-        status: 'pending',
-        validationDate: '',
-        validatedBy: '',
-        lastModified: new Date().toISOString(),
-        fileUrl,
-        fileSize,
-        boxWeights: selectedBoxWeights,
-        paletteNumbers: selectedPaletteNumbers,
-        boxTypes: selectedBoxTypes,
-        calibers: selectedCalibers,
-        avocadoCount,
-        packagingDate
+      const userId = auth.currentUser.uid;
+      console.log('User ID:', userId);
+
+      // Generate a unique filename with sanitized name
+      const timestamp = Date.now();
+      const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const fileName = `${timestamp}_${sanitizedFileName}`;
+      const storagePath = `invoices/${userId}/${boxId}/${fileName}`;
+      console.log('Storage path:', storagePath);
+
+      // Convert file to base64
+      const reader = new FileReader();
+      const fileData = await new Promise<string>((resolve) => {
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.readAsDataURL(file);
+      });
+
+      // Upload using Cloud Function
+      const response = await fetch('https://us-central1-fruitsforyou-10acc.cloudfunctions.net/uploadFile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await auth.currentUser.getIdToken()}`
+        },
+        body: JSON.stringify({
+          file: fileData.split(',')[1], // Remove data URL prefix
+          path: storagePath,
+          metadata: {
+            contentType: file.type,
+            originalName: file.name,
+            boxId: boxId,
+            userId: userId
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      const { url } = await response.json();
+      console.log('Download URL:', url);
+
+      // Create facture document in the subcollection
+      const factureData = {
+        imageUrl: url,
+        uploadedAt: serverTimestamp(),
+        notes: '',
+        originalName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        uploadedBy: userId
       };
 
-      // Update Firestore
-      const boxRef = doc(firestore, 'boxes', box.id);
-      const updatedItems = [...box.items, newItem];
-      await updateDoc(boxRef, {
-        items: updatedItems,
-        lastModified: serverTimestamp()
-      });
+      console.log('Creating facture document with data:', factureData);
+      const factureRef = await addDoc(collection(firestore, 'Archifageboxes', boxId, 'factures'), factureData);
+      console.log('Facture document created with ID:', factureRef.id);
 
       // Update local state
-      setBoxes(prevBoxes => {
-        const updatedBoxes = [...prevBoxes];
-        updatedBoxes[boxIndex].items = updatedItems;
-        return updatedBoxes;
-      });
+      setContainers(prev => prev.map(container => {
+        if (container.id === boxId) {
+          const newFacture: ArchiveItem = {
+            id: factureRef.id,
+            name: file.name,
+            type: file.type,
+            date: new Date().toLocaleDateString(),
+            category: DOCUMENT_CATEGORIES[0].id,
+            status: 'pending' as const,
+            lastModified: new Date().toISOString(),
+            fileSize: formatFileSize(file.size),
+            fileUrl: url,
+            uploadedAt: serverTimestamp() as unknown as Timestamp,
+            uploadedBy: userId,
+            storagePath: storagePath,
+            notes: '',
+            tags: [],
+            reference: '',
+            validationDate: '',
+            validatedBy: '',
+            folderPath: '',
+            boxWeights: [],
+            paletteNumbers: [],
+            boxTypes: [],
+            calibers: [],
+            avocadoCount: 0,
+            packagingDate: ''
+          };
+          return {
+            ...container,
+            factures: [...container.factures, newFacture]
+          };
+        }
+        return container;
+      }));
 
+      console.log('Local state updated successfully');
       showNotification('Document ajouté avec succès', 'success');
+      return true;
     } catch (error) {
-      console.error('Error adding item:', error);
+      console.error('Error in handleAddItemToBox:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        });
+      }
       showNotification('Erreur lors de l\'ajout du document', 'error');
+      throw error;
     }
   };
 
@@ -297,26 +497,34 @@ const Archivagedesfacture: React.FC = () => {
     const files = e.target.files;
     if (files && files.length > 0) {
       for (const file of Array.from(files)) {
-        await handleAddItemToBox(boxIndex, file.name, file.type.split('/')[1], file);
+        await handleAddItemToBox(boxes[boxIndex].id, file);
       }
     }
   };
 
   const getFilteredItems = (): ArchiveItem[] => {
-    if (selectedBoxIndex === null) return [];
+    if (selectedBoxIndex === null || !boxes[selectedBoxIndex]) {
+      return [];
+    }
     
-    let items = boxes[selectedBoxIndex].items;
-    
+    const currentBox = boxes[selectedBoxIndex];
+    if (!currentBox.items) {
+      return [];
+    }
+
+    let items = [...currentBox.items];
+
     // Apply search filter
     if (searchTerm) {
       items = items.filter(item => 
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.type.toLowerCase().includes(searchTerm.toLowerCase())
+        item.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.category && item.category.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
     
     // Apply sorting
-    items = [...items].sort((a, b) => {
+    items.sort((a, b) => {
       if (sortBy === 'name') {
         return a.name.localeCompare(b.name);
       } else if (sortBy === 'type') {
@@ -521,7 +729,7 @@ const Archivagedesfacture: React.FC = () => {
           } else if (entry.isFile) {
             const file = item.getAsFile();
             if (file) {
-              await handleAddItemToBox(boxIndex, file.name, file.type.split('/')[1], file);
+              await handleAddItemToBox(boxes[boxIndex].id, file);
             }
           }
         }
@@ -667,131 +875,153 @@ const Archivagedesfacture: React.FC = () => {
     );
   };
 
-  const renderSelectionFields = () => (
-    <div className="space-y-6 mb-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
-          <Label htmlFor="packagingDate" className="flex items-center gap-2 font-semibold">
-            📅 Date d'emballage <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="packagingDate"
-            type="datetime-local"
-            value={packagingDate}
-            onChange={(e) => setPackagingDate(e.target.value)}
-            className="border-2 focus:border-amber-500 transition-colors"
-            required
-          />
-        </div>
+  const uploadFacture = async (containerId: string, file: File) => {
+    console.log('Starting uploadFacture:', { containerId, fileName: file.name, fileSize: file.size, fileType: file.type });
+    
+    if (!file) {
+      console.error('No file provided to uploadFacture');
+      return;
+    }
 
-        <div className="space-y-2">
-          <Label htmlFor="avocadoCount" className="flex items-center gap-2 font-semibold">
-            🥑 Nombre d'avocats
-          </Label>
-          <Input
-            id="avocadoCount"
-            type="number"
-            value={avocadoCount}
-            onChange={(e) => setAvocadoCount(parseInt(e.target.value) || 0)}
-            className="border-2 focus:border-amber-500 transition-colors"
-            placeholder="Ex: 48"
-          />
-        </div>
+    const userId = auth.currentUser?.uid;
+    if (!userId) {
+      console.error('No authenticated user found during upload');
+      showNotification('Vous devez être connecté pour télécharger une facture', 'error');
+      return;
+    }
 
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2 font-semibold">
-            ⚖️ Poids net de la boîte <span className="text-red-500">*</span>
-          </Label>
-          <div className="grid grid-cols-2 gap-4">
-            {BOX_WEIGHTS.map((weight) => (
-              <div key={weight} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`boxWeight-${weight}`}
-                  checked={selectedBoxWeights.includes(weight)}
-                  onCheckedChange={() => handleBoxWeightToggle(weight)}
-                />
-                <label
-                  htmlFor={`boxWeight-${weight}`}
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  {weight}
-                </label>
-              </div>
-            ))}
-          </div>
-        </div>
+    try {
+      console.log('User authenticated:', userId);
+      setIsUploading(true);
+      const fileName = `${Date.now()}_${file.name}`;
+      console.log('Generated storage path:', `containers/${containerId}/${fileName}`);
+      
+      const storageRef = ref(storage, `containers/${containerId}/${fileName}`);
+      console.log('Storage reference created:', storageRef.fullPath);
+      
+      // Upload file to Firebase Storage
+      console.log('Starting file upload to Firebase Storage...');
+      const uploadTask = uploadBytes(storageRef, file);
+      
+      // Track upload progress
+      setUploadProgress(prev => ({
+        ...prev,
+        [fileName]: {
+          fileName,
+          progress: 0,
+          status: 'uploading'
+        }
+      }));
 
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2 font-semibold">
-            📦 Numéro de palette <span className="text-red-500">*</span>
-          </Label>
-          <div className="grid grid-cols-3 gap-4">
-            {PALETTE_NUMBERS.map((number) => (
-              <div key={number} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`palette-${number}`}
-                  checked={selectedPaletteNumbers.includes(number)}
-                  onCheckedChange={() => handlePaletteNumberToggle(number)}
-                />
-                <label
-                  htmlFor={`palette-${number}`}
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  {number}
-                </label>
-              </div>
-            ))}
-          </div>
-        </div>
+      console.log('Waiting for upload to complete...');
+      const snapshot = await uploadTask;
+      console.log('Upload completed, getting download URL...');
+      
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      console.log('Download URL obtained:', downloadURL);
 
-        <div className="space-y-2 md:col-span-2">
-          <Label className="flex items-center gap-2 font-semibold">
-            📦 Type d'emballage <span className="text-red-500">*</span>
-          </Label>
-          <div className="grid grid-cols-2 gap-4">
-            {BOX_TYPES.map((boxType) => (
-              <div key={boxType} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`boxType-${boxType}`}
-                  checked={selectedBoxTypes.includes(boxType)}
-                  onCheckedChange={() => handleBoxTypeToggle(boxType)}
-                />
-                <label
-                  htmlFor={`boxType-${boxType}`}
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  {boxType}
-                </label>
-              </div>
-            ))}
-          </div>
-        </div>
+      // Create facture document in Firestore
+      console.log('Creating facture document in Firestore...');
+      const factureRef = await addDoc(collection(firestore, 'factures'), {
+        name: file.name,
+        date: new Date().toISOString(),
+        type: file.type,
+        category: 'facture',
+        status: 'pending',
+        lastModified: new Date().toISOString(),
+        fileSize: file.size,
+        fileUrl: downloadURL,
+        containerId,
+        userId
+      });
+      console.log('Facture document created with ID:', factureRef.id);
 
-        <div className="space-y-2 md:col-span-2">
-          <Label className="flex items-center gap-2 font-semibold">
-            📏 Calibres
-          </Label>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {CALIBERS.map((caliber) => (
-              <div key={caliber} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`caliber-${caliber}`}
-                  checked={selectedCalibers.includes(caliber)}
-                  onCheckedChange={() => handleCaliberToggle(caliber)}
-                />
-                <label
-                  htmlFor={`caliber-${caliber}`}
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Calibre {caliber}
-                </label>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+      // Update container with new facture
+      console.log('Updating container with new facture...');
+      const containerRef = doc(firestore, 'containers', containerId);
+      await updateDoc(containerRef, {
+        updatedAt: serverTimestamp(),
+        factures: arrayUnion({
+          id: factureRef.id,
+          name: file.name,
+          date: new Date().toISOString(),
+          type: file.type,
+          category: 'facture',
+          status: 'pending',
+          lastModified: new Date().toISOString(),
+          fileSize: file.size,
+          fileUrl: downloadURL,
+          containerId
+        })
+      });
+      console.log('Container updated successfully');
+
+      setUploadProgress(prev => ({
+        ...prev,
+        [fileName]: {
+          fileName,
+          progress: 100,
+          status: 'completed'
+        }
+      }));
+
+      showNotification('Facture téléchargée avec succès', 'success');
+    } catch (error) {
+      console.error('Error in uploadFacture:', error);
+      if (error instanceof Error) {
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        
+        // Check for specific Firebase errors
+        if (error.message.includes('storage/unauthorized')) {
+          console.error('Storage unauthorized error - check storage rules');
+        } else if (error.message.includes('storage/canceled')) {
+          console.error('Upload was canceled');
+        } else if (error.message.includes('storage/unknown')) {
+          console.error('Unknown storage error');
+        }
+      }
+      
+      showNotification('Erreur lors du téléchargement de la facture', 'error');
+      setUploadProgress(prev => ({
+        ...prev,
+        [file.name]: {
+          fileName: file.name,
+          progress: 0,
+          status: 'error',
+          error: 'Upload failed'
+        }
+      }));
+    } finally {
+      setIsUploading(false);
+      console.log('Upload process completed');
+    }
+  };
+
+  // Add this function to check Firebase configuration
+  const checkFirebaseConfig = () => {
+    console.log('Checking Firebase configuration...');
+    console.log('Storage instance:', storage);
+    console.log('Firestore instance:', firestore);
+    console.log('Auth instance:', auth);
+    console.log('Current user:', auth.currentUser);
+    
+    // Check if storage bucket is properly configured
+    if (storage) {
+      console.log('Storage bucket:', storage.app.options.storageBucket);
+    }
+    
+    // Check if Firestore is properly configured
+    if (firestore) {
+      console.log('Firestore database:', firestore.type);
+    }
+  };
+
+  // Call this when component mounts
+  useEffect(() => {
+    checkFirebaseConfig();
+  }, []);
 
   if (selectedBoxIndex !== null && boxes[selectedBoxIndex]) {
     const currentBox = boxes[selectedBoxIndex];
@@ -846,8 +1076,6 @@ const Archivagedesfacture: React.FC = () => {
           </div>
         </div>
 
-        {renderSelectionFields()}
-
         <div className="mb-6">
           <Tabs defaultValue="all" className="w-full">
             <div className="flex items-center justify-between mb-4">
@@ -892,13 +1120,13 @@ const Archivagedesfacture: React.FC = () => {
                     <Label>Catégorie</Label>
                     <Select
                       onValueChange={(value) => setSearchTerm(value)}
-                      defaultValue=""
+                      defaultValue="all"
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Toutes les catégories" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Toutes les catégories</SelectItem>
+                        <SelectItem value="all">Toutes les catégories</SelectItem>
                         {DOCUMENT_CATEGORIES.map((category) => (
                           <SelectItem key={category.id} value={category.id}>
                             <div className="flex items-center">
@@ -917,13 +1145,13 @@ const Archivagedesfacture: React.FC = () => {
                     <Label>Statut</Label>
                     <Select
                       onValueChange={(value) => setSearchTerm(value)}
-                      defaultValue=""
+                      defaultValue="all"
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Tous les statuts" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Tous les statuts</SelectItem>
+                        <SelectItem value="all">Tous les statuts</SelectItem>
                         <SelectItem value="pending">En attente</SelectItem>
                         <SelectItem value="validated">Validés</SelectItem>
                         <SelectItem value="rejected">Rejetés</SelectItem>
@@ -935,13 +1163,13 @@ const Archivagedesfacture: React.FC = () => {
                     <Label>Période</Label>
                     <Select
                       onValueChange={(value) => setSearchTerm(value)}
-                      defaultValue=""
+                      defaultValue="all"
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Toutes les dates" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Toutes les dates</SelectItem>
+                        <SelectItem value="all">Toutes les dates</SelectItem>
                         <SelectItem value="today">Aujourd'hui</SelectItem>
                         <SelectItem value="week">Cette semaine</SelectItem>
                         <SelectItem value="month">Ce mois</SelectItem>
@@ -1278,7 +1506,7 @@ const Archivagedesfacture: React.FC = () => {
           </Tabs>
         </div>
 
-        {selectedItems.length > 0 && (
+        {selectedItems && selectedItems.length > 0 && (
           <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white py-3 px-6 rounded-lg shadow-lg z-10 flex items-center space-x-4 animate-slideUp">
             <span className="text-sm font-medium">{selectedItems.length} éléments sélectionnés</span>
             <button
@@ -1600,14 +1828,10 @@ const Archivagedesfacture: React.FC = () => {
                           ref={fileInputRef}
                           className="hidden"
                           onChange={(e) => handleFileSelection(selectedBoxIndex!, e)}
-                          required
                         />
                         <Upload className="h-12 w-12 mx-auto text-gray-400 mb-2" />
                         <p className="text-sm text-gray-600">
-                          <span className="font-medium text-blue-600">Cliquez pour sélectionner</span> ou glissez-déposez vos fichiers ici
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          PDF, Images, Documents (max 10MB)
+                          Cliquez pour sélectionner un fichier ou glissez-déposez-le ici
                         </p>
                       </div>
                     </div>

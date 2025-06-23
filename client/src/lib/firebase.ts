@@ -18,33 +18,13 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize services
 const firestore = getFirestore(app);
-const storage = getStorage(app);
+const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
 const auth = getAuth(app);
 
-// Configure CORS for development
+// Configure storage for CORS
 if (process.env.NODE_ENV === 'development') {
-  // Enable CORS for local development
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-  };
-
-  // Add CORS headers to storage requests
-  const originalFetch = window.fetch;
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (typeof input === 'string' && input.includes('firebasestorage.googleapis.com')) {
-      const response = await originalFetch(input, {
-        ...init,
-        headers: {
-          ...init?.headers,
-          ...corsHeaders
-        }
-      });
-      return response;
-    }
-    return originalFetch(input, init);
-  };
+  // In development, we'll use the emulator
+  connectStorageEmulator(storage, 'localhost', 9199);
 }
 
 // Export services

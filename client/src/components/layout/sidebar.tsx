@@ -27,7 +27,9 @@ import {
   ArchiveRestore,
   ShieldCheck,
   ChevronLeft,
+  Construction ,
   Plus,
+
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -104,10 +106,21 @@ export default function Sidebar() {
       icon: <Home className="h-5 w-5 mr-2" />,
       path: "/",
     },
+        {
+      title: "general communication dashboard",
+      icon: <Home className="h-5 w-5 mr-2" />,
+      path: "/communication-dashboard",
+    },
     {
       title: "Nouvelle Entrée",
       icon: <PlusSquare className="h-5 w-5 mr-2" />,
       path: "/new-entry",
+    },
+    ,
+    {
+      title: "commande clinet",
+      icon: <PlusSquare className="h-5 w-5 mr-2" />,
+      path: "/commandeclinet",
     },
     {
       title: "Scanner Code",
@@ -149,6 +162,12 @@ export default function Sidebar() {
       title: "Gérer Fermes",
       icon: <Tractor className="h-5 w-5 mr-2" />,
       path: "/farms",
+    },
+    ,
+    {
+      title: "gerer les commandes clinet",
+      icon: <PlusSquare className="h-5 w-5 mr-2" />,
+      path: "/gererlescommandesclinet",
     },
   ];
 
@@ -248,12 +267,29 @@ export default function Sidebar() {
     },
 
   ];
-     const clients = [
+       const mantenance = [
     {
-      title: "ReportsPage",
-      icon: <LayoutTemplate className="h-5 w-5 mr-2" />,
-      path: "/ReportsPage",
+      title: "dossiere de maintenance",
+      icon: <Construction  className="h-5 w-5 mr-2" />,
+      path: "/dossieredemaintenance",
     },
+     {
+      title: "historique de maintenance",
+      icon: <History className="h-5 w-5 mr-2" />,
+      path: "/historiquedemaintenance",
+    },
+    ,
+     {
+      title: "analyse vibratoire",
+      icon: <Plus  className="h-5 w-5 mr-2" />,
+      path: "/automatisationdemaintenance",
+    },
+         {
+      title: "pieces de rechange maintenance",
+      icon: <Plus  className="h-5 w-5 mr-2" />,
+      path: "/piecesderechangemaintenance",
+    },
+
 
   ];
 
@@ -290,8 +326,7 @@ export default function Sidebar() {
           {renderSection("Production", production, "production")}
           {renderSection("Personnel", personnelItems, "personnel")}
           {renderSection("Comptabilité", Comptabilité, "Comptabilité")}
-          {renderSection("clients", clients, "clients")}
-          
+          {renderSection("Maintenance", mantenance, "mantenance")}          
         </nav>
 
         {/* Bottom Section with Version and Info */}

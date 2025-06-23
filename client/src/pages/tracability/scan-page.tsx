@@ -11,6 +11,8 @@ import { Loader2, QrCode, Search, Camera, X, FileText, ExternalLink, Download, S
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { apiRequest } from '../../lib/queryClient';
 import { QrScanner } from '@yudiel/react-qr-scanner';
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 // Simple QR code component that doesn't rely on Firebase
 interface SimpleQRCodeProps {
@@ -402,6 +404,81 @@ export default function ScanPage() {
     setShowDownloadConfirm(true);
   };
 
+  // Add New Order from scanned lot with manual kg entry (multi-item support)
+  const [orderItems, setOrderItems] = useState([
+    {
+      caliber: scannedLot?.packaging.size || '',
+      quantity: scannedLot?.packaging.netWeight || 0,
+      type: scannedLot?.harvest.variety || '',
+      processingTime: 0
+    }
+  ]);
+
+  // Update orderItems when scannedLot changes
+  useEffect(() => {
+    if (scannedLot) {
+      setOrderItems([
+        {
+          caliber: scannedLot.packaging.size || '',
+          quantity: scannedLot.packaging.netWeight || 0,
+          type: scannedLot.harvest.variety || '',
+          processingTime: 0
+        }
+      ]);
+    }
+  }, [scannedLot]);
+
+  const handleItemChange = (idx: number, field: string, value: any) => {
+    setOrderItems((prev) =>
+      prev.map((item, i) =>
+        i === idx ? { ...item, [field]: value } : item
+      )
+    );
+  };
+
+  const handleAddItem = () => {
+    setOrderItems((prev) => [
+      ...prev,
+      {
+        caliber: scannedLot?.packaging.size || '',
+        quantity: 0,
+        type: scannedLot?.harvest.variety || '',
+        processingTime: 0
+      }
+    ]);
+  };
+
+  const handleRemoveItem = (idx: number) => {
+    setOrderItems((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleAddOrder = async () => {
+    if (!scannedLot) return;
+    try {
+      const order = {
+        clientName: scannedLot.harvest.farmer || 'Client inconnu',
+        orderDate: new Date(),
+        requestedDeliveryDate: new Date(),
+        status: 'pending',
+        items: orderItems,
+        priority: 'medium',
+        totalProcessingTime: 0,
+        notes: `Ajouté depuis Scan: Lot ${scannedLot.harvest.lotNumber}`
+      };
+      await addDoc(collection(db, 'avocado_orders'), order);
+      toast({
+        title: 'Commande ajoutée',
+        description: `Commande pour le lot ${scannedLot.harvest.lotNumber} ajoutée avec succès !`,
+      });
+    } catch (e) {
+      toast({
+        title: 'Erreur',
+        description: 'Impossible d\'ajouter la commande',
+        variant: 'destructive',
+      });
+    }
+  };
+
   // Enhanced QR code modal
   const QRCodeModal = () => {
     if (!showQRModal || !scannedLot || !generatedQRData) return null;
@@ -587,26 +664,80 @@ export default function ScanPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Order Quantity Section */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantité à commander (kg) par item</label>
+                  <div className="space-y-2">
+                    {orderItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="text-xs text-gray-600">{item.type} (Caliber {item.caliber})</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={e => handleOrderItemKgChange(idx, Number(e.target.value))}
+                          className="w-32"
+                          disabled={!scannedLot}
+                        />
+                        <span className="text-xs">kg</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Multi-item order form */}
+                <div className="mt-8">
+                  <h3 className="text-lg font-semibold mb-2">Ajouter des articles à la commande</h3>
+                  <div className="space-y-4">
+                    {orderItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-4 bg-muted/30 p-3 rounded-lg">
+                        <div className="flex-1">
+                          <div className="text-sm text-muted-foreground">Calibre</div>
+                          <Input
+                            value={item.caliber}
+                            onChange={e => handleItemChange(idx, 'caliber', e.target.value)}
+                            className="mb-1"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm text-muted-foreground">Type</div>
+                          <Input
+                            value={item.type}
+                            onChange={e => handleItemChange(idx, 'type', e.target.value)}
+                            className="mb-1"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm text-muted-foreground">Kg</div>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={item.quantity}
+                            onChange={e => handleItemChange(idx, 'quantity', Number(e.target.value))}
+                            className="mb-1"
+                          />
+                        </div>
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => handleRemoveItem(idx)}
+                          disabled={orderItems.length === 1}
+                          title="Supprimer l'article"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button variant="outline" onClick={handleAddItem} className="mt-2">
+                      + Ajouter un article
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
               <CardFooter className="flex justify-end gap-2 p-6 pt-0 bg-muted/50">
-                <Button 
-                  variant="outline" 
-                  onClick={() => handleGenerateQR('download')}
-                  disabled={isDownloading}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  QR Téléchargement
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => handleGenerateQR('view')}
-                >
-                  <QrCode className="h-4 w-4 mr-2" />
-                  QR Consultation
-                </Button>
-                <Button variant="outline" onClick={handleShareQR}>
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Partager
+                <Button variant="default" onClick={handleAddOrder} disabled={!scannedLot}>
+                  Ajouter Commande
                 </Button>
                 <Button variant="outline" onClick={showPDF}>
                   <FileText className="h-4 w-4 mr-2" />
