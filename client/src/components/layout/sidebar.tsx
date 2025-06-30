@@ -195,7 +195,7 @@ export default function Sidebar() {
     {
       title: "Archife",
       icon: <ClipboardList className="h-5 w-5 mr-2" />,
-      path: "/logistique/history",
+      path: "/archifage",
     },
   ];
 
@@ -252,6 +252,11 @@ export default function Sidebar() {
       title: "invtory tracking ",
       icon: <History className="h-5 w-5 mr-2" />,
       path: "/historiquedeconsomation",
+    },
+        {
+      title: "suivi de production",
+      icon: <History className="h-5 w-5 mr-2" />,
+      path: "/suivi-production",
     },
   ];
    const Comptabilité = [

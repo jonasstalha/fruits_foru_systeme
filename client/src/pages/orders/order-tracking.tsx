@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Clock, Truck, Search, Filter, Calendar } from 'lucide-react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 
 interface OrderItem {
@@ -30,6 +30,8 @@ export default function OrderTrackingView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  // Add a completed property to each item for tracking
+  const [orderItemsStatus, setOrderItemsStatus] = useState<{ [orderId: string]: boolean[] }>({});
 
   useEffect(() => {
     const q = query(collection(db, 'avocado_orders'), orderBy('orderDate', 'desc'));
@@ -49,6 +51,40 @@ export default function OrderTrackingView() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    // Initialize or update the status for each order's items
+    setOrderItemsStatus(prev => {
+      const updated: { [orderId: string]: boolean[] } = { ...prev };
+      orders.forEach(order => {
+        if (!updated[order.id] || updated[order.id].length !== order.items.length) {
+          updated[order.id] = order.items.map(() => false);
+        }
+      });
+      return updated;
+    });
+  }, [orders]);
+
+  const toggleItemCompleted = (orderId: string, idx: number) => {
+    setOrderItemsStatus(prev => ({
+      ...prev,
+      [orderId]: prev[orderId].map((val, i) => (i === idx ? !val : val))
+    }));
+  };
+
+  // Change order status
+  const changeOrderStatus = async (orderId: string, newStatus: Order['status']) => {
+    setOrders(prev => prev.map(order =>
+      order.id === orderId ? { ...order, status: newStatus } : order
+    ));
+    try {
+      const orderRef = doc(db, 'avocado_orders', orderId);
+      await updateDoc(orderRef, { status: newStatus });
+    } catch (error) {
+      // Optionally handle error (e.g., show notification)
+      console.error('Failed to update order status:', error);
+    }
+  };
 
   const getStatusColor = (status: Order['status']) => {
     const colors = {
@@ -220,23 +256,42 @@ export default function OrderTrackingView() {
 
               {/* Order Items */}
               <div className="mt-6 border-t border-gray-200 pt-4">
-                <h4 className="text-sm font-medium text-gray-900 mb-3">Order Items</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-3">Order Items (Calibers)</h4>
+                {(order.status === 'pending' || order.status === 'processing' || order.status === 'delayed') && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Change Status:</label>
+                    <select
+                      className="border rounded px-2 py-1"
+                      value={order.status}
+                      onChange={e => changeOrderStatus(order.id, e.target.value as Order['status'])}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="processing">Processing</option>
+                      <option value="delayed">Delayed</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
+                )}
+                <ul className="space-y-2">
                   {order.items.map((item, idx) => (
-                    <div key={idx} className="bg-gray-50 rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium text-gray-900">{item.type}</p>
-                          <p className="text-sm text-gray-600">Caliber: {item.caliber}</p>
+                    Array.from({ length: item.quantity }).map((_, palletIdx) => (
+                      <li key={`${idx}-${palletIdx}`} className="flex items-center gap-3 bg-white border rounded-lg px-4 py-2 shadow-sm hover:bg-green-50 transition">
+                        <input
+                          type="checkbox"
+                          checked={orderItemsStatus[order.id]?.[idx * 100 + palletIdx] || false}
+                          onChange={() => toggleItemCompleted(order.id, idx * 100 + palletIdx)}
+                          className="form-checkbox h-5 w-5 text-green-600 focus:ring-2 focus:ring-green-400"
+                        />
+                        <div className="flex-1 flex flex-col md:flex-row md:items-center md:justify-between">
+                          <span className="font-medium text-gray-900">{item.type} <span className="text-xs text-gray-500 ml-2">Caliber: {item.caliber}</span></span>
+                          <span className="text-sm text-gray-700">1 palette</span>
+                          <span className="text-xs text-gray-500">Processing: {item.processingTime}h</span>
                         </div>
-                        <span className="text-sm font-medium text-gray-900">{item.quantity} kg</span>
-                      </div>
-                      <div className="mt-2 text-sm text-gray-500">
-                        Processing time: {item.processingTime}h
-                      </div>
-                    </div>
+                      </li>
+                    ))
                   ))}
-                </div>
+                </ul>
               </div>
 
               {/* Timeline */}

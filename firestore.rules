@@ -139,7 +139,7 @@ service cloud.firestore {
         && data.delivery.notes is string;
     }
 
-    // ✅ Avocado Orders collection
+    // ✅ Avocado Orders collection - accessible to all authenticated users
     match /avocado_orders/{orderId} {
       allow read, write: if isAuthenticated();
     }
@@ -234,65 +234,41 @@ service cloud.firestore {
 
     // Boxes
     match /boxes/{boxId} {
-      allow read: if isAuthenticated() && isOwner(resource.data.userId);
-      allow create: if isAuthenticated()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.title is string
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.lastModified is timestamp;
-      allow update: if isAuthenticated()
-        && resource.data.userId == request.auth.uid
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.lastModified is timestamp;
-      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Files subcollection for multiple uploads per box
+      match /files/{fileId} {
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      }
     }
 
-    // Consumption
-    match /consumption/{consumptionId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated();
-      allow list: if isAuthenticated();
-    }
+    // Archifageboxes
+    match /Archifageboxes/{boxId} {
+      allow read, write: if isAuthenticated() && resource.data.userId == request.auth.uid;
 
-    // Consumption history
-    match /consumptionHistory/{historyId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated();
-    }
-
-    // Items
-    match /items/{itemId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
-      allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
-    }
-
-    // Box items
-    match /boxItems/{itemId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated();
+      // Factures subcollection
+      match /factures/{factureId} {
+        allow read, write: if isAuthenticated() && resource.data.uploadedBy == request.auth.uid;
+      }
     }
 
     // Containers
     match /containers/{containerId} {
-      allow read: if isAuthenticated() &&
-        (!exists(/databases/$(database)/documents/containers/$(containerId)) ||
-         request.auth.uid == resource.data.userId);
-      allow create: if isAuthenticated() &&
-        request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthenticated() &&
-        request.auth.uid == resource.data.userId;
+      allow read, write: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Factures collection (for uploaded invoices)
+    match /factures/{factureId} {
+      allow read, write: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
     // Logistics archives
     match /logistics-archives/{docId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && isOwner(resource.data.userId);
-      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+      // Allow create if the user is authenticated and is creating their own document
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // Allow read, update, delete if the user is authenticated and owns the document
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
     // Archive boxes
@@ -306,6 +282,11 @@ service cloud.firestore {
         allow read: if isAuthenticated();
         allow write: if isAuthenticated() && get(/databases/$(database)/documents/archive-boxes/$(boxId)).data.userId == request.auth.uid;
       }
+    }
+
+    // Public access for production_suivi (for SuiviProduction)
+    match /production_suivi/{docId} {
+      allow read, write: if true;
     }
 
     // Default deny
@@ -328,6 +309,19 @@ service firebase.storage {
 
     function isDevelopmentServer() {
       return request.origin.matches('http://localhost:[0-9]+');
+    }
+
+    // User files
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Invoices uploaded by user (archive uploads)
+    match /invoices/{userId}/{boxId}/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Factures: allow any authenticated user to read and write
+    match /factures/{allBoxIds}/{allPaths=**} {
+      allow read, write: if request.auth != null;
     }
 
     match /documents/{userId}/{fileName} {

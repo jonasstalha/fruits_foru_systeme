@@ -3,7 +3,7 @@ import { useAuth } from "@/components/auth-provider";
 import { Menu, Bell, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Sidebar from "./sidebar";
-import { useNavigate } from "wouter";
+import { useLocation } from "wouter";
 
 interface TopBarProps {
   title: string;
@@ -14,7 +14,7 @@ export default function TopBar({ title, subtitle }: TopBarProps) {
   const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [language, setLanguage] = useState("FR");
-  const navigate = useNavigate();
+  const [location, navigate] = useLocation();
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
@@ -32,11 +32,12 @@ export default function TopBar({ title, subtitle }: TopBarProps) {
           {subtitle && <p className="text-neutral-500">{subtitle}</p>}
         </div>
 
-        <div className="flex items-center space-x-4">          <Button
+        <div className="flex items-center space-x-4">
+          <Button
             variant="ghost"
             size="icon"
             className="rounded-full"
-            onClick={() => window.location.href = '/communication-dashboard'}
+            onClick={() => navigate('/communication-dashboard')}
           >
             <Bell className="h-5 w-5" />
           </Button>

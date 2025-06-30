@@ -23,7 +23,7 @@ import inventory from "./pages/logistique/inventory";
 import qualitycontrol from "./pages/quality/qualitycontrol";
 import personnelmanagement from "./pages/personnele/personnelmanagement";
 import calculedeconsomation from "./pages/production/calculedeconsomation";
-import LogisticsArchive from "./pages/logistique/history";
+import archifage from "./pages/src/archifage";
 import reception from "./pages/recaption/reception";
 import newEntry from "./pages/recaption/newentry";
 import Horaires from "./pages/personnele/Horaires";
@@ -44,6 +44,11 @@ import AutomatisationDeMaintenance from "@/pages/maintenance/automatisation-main
 import PiecesDeRechangeMaintenance from "@/pages/maintenance/pieces-rechange-maintenance";
 import CommunicationDashboard from "@/pages/communication/communication-dash";
 import DocumentArchive from "@/pages/archive/DocumentArchive"
+import LotBarcodePage from "@/pages/lots-barcode-page"
+import { Dashboard } from "./pages/src/pages/Dashboard";
+import Archifage from "./pages/src/archifage";
+import { BoxDetail } from "./pages/src/pages/BoxDetail";
+import SuiviProduction from "./pages/production/SuiviProduction"
 // Public routes that don't require authentication
 function PublicRoutes() {
   return (
@@ -54,6 +59,8 @@ function PublicRoutes() {
       <Route path="/api/avocado-tracking/:lotNumber/pdf" component={LotDetailPage} />
       <Route path="/api/avocado-tracking/:lotNumber/generate-pdf" component={LotDetailPage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/archifage" component={Archifage} />
+      <Route path="/box/:boxId" component={BoxDetail} />
       <Route path="*">
         <ProtectedRoute>
           <AuthenticatedRoutes />
@@ -76,6 +83,7 @@ function AuthenticatedRoutes() {
         <Route path="/gererlescommandesclinet" component={GererCommandesClient} />
         <Route path="/commandeclinet" component={OrderTrackingView} />
         <Route path="/lots" component={LotsPage} />
+        <Route path="/lots/:id/barcode" component={LotBarcodePage} />
         <Route path="/farms" component={FarmsPage} />
         <Route path="/farms/:id" component={FarmDetailPage} />
         <Route path="/users" component={UsersPage} />
@@ -100,13 +108,18 @@ function AuthenticatedRoutes() {
         <Route path="/Archivagedescontroles" component={Archivagedescontroles} />
         <Route path="/Archivagedesfacture" component={Archivagedesfacture} />
         <Route path="/DocumentArchive" component={DocumentArchive} />
+        <Route path="/archifage" component={archifage} />
         {/* Client Orders */}
-
+        <Route path="/suivi-production" component={SuiviProduction} />
+        {/* Client Orders */}
         {/* Maintenance Routes */}
+        <Route path="/maintenance" component={Dashboard} />
         <Route path="/automatisationdemaintenance" component={AutomatisationDeMaintenance} />
         <Route path="/piecesderechangemaintenance" component={PiecesDeRechangeMaintenance} />
         <Route path="/dossieredemaintenance" component={historiquedemaintenance} />
-        
+        <Route path="/orders" component={GererCommandesClient} />
+        <Route path="/archifage" component={Archifage} />
+        <Route path="/box/:boxId" component={BoxDetail} />
         <Route path="*" component={NotFound} />
       </Switch>
     </MainLayout>

@@ -368,6 +368,10 @@ const Archivagedesfacture: React.FC = () => {
   };
 
   const handleAddItemToBox = async (boxId: string, file: File) => {
+    if (!file || !file.name) {
+      showNotification('Aucun fichier sélectionné ou fichier invalide', 'error');
+      return;
+    }
     try {
       console.log('Starting file upload for box:', boxId);
       console.log('File details:', {
@@ -391,37 +395,11 @@ const Archivagedesfacture: React.FC = () => {
       const storagePath = `invoices/${userId}/${boxId}/${fileName}`;
       console.log('Storage path:', storagePath);
 
-      // Convert file to base64
-      const reader = new FileReader();
-      const fileData = await new Promise<string>((resolve) => {
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.readAsDataURL(file);
-      });
-
-      // Upload using Cloud Function
-      const response = await fetch('https://us-central1-fruitsforyou-10acc.cloudfunctions.net/uploadFile', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await auth.currentUser.getIdToken()}`
-        },
-        body: JSON.stringify({
-          file: fileData.split(',')[1], // Remove data URL prefix
-          path: storagePath,
-          metadata: {
-            contentType: file.type,
-            originalName: file.name,
-            boxId: boxId,
-            userId: userId
-          }
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
-      }
-
-      const { url } = await response.json();
+      // Upload file directly to Firebase Storage
+      const storageRef = ref(storage, storagePath);
+      const uploadTask = uploadBytes(storageRef, file);
+      await uploadTask;
+      const url = await getDownloadURL(storageRef);
       console.log('Download URL:', url);
 
       // Create facture document in the subcollection

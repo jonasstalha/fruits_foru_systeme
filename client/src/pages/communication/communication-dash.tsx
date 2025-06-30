@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageCircle, Bell, Users, Calendar, Search, Filter } from 'lucide-react';
+import { MessageCircle, Bell, Search, Filter } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -10,12 +10,18 @@ interface Message {
   priority: 'high' | 'medium' | 'low';
 }
 
+interface Notification {
+  id: string;
+  content: string;
+  timestamp: Date;
+  read: boolean;
+}
+
 export default function CommunicationDashboard() {
   const [activeTab, setActiveTab] = useState('messages');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPriority, setFilterPriority] = useState('all');
-
-  const mockMessages: Message[] = [
+  const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       sender: 'Logistics Team',
@@ -32,7 +38,21 @@ export default function CommunicationDashboard() {
       read: true,
       priority: 'medium',
     }
-  ];
+  ]);
+  const [notifications, setNotifications] = useState<Notification[]>([
+    {
+      id: 'n1',
+      content: 'System maintenance scheduled for tomorrow at 10:00 AM.',
+      timestamp: new Date(),
+      read: false,
+    },
+    {
+      id: 'n2',
+      content: 'Reminder: Submit your weekly report.',
+      timestamp: new Date(),
+      read: true,
+    }
+  ]);
 
   const getTabClassName = (tabName: string) => {
     return activeTab === tabName
@@ -49,6 +69,69 @@ export default function CommunicationDashboard() {
       'border-gray-200';
     
     return [baseClass, readClass, priorityClass].join(' ');
+  };
+
+  // Filtered and searched messages
+  const filteredMessages = messages.filter((message) => {
+    const matchesSearch =
+      !searchTerm ||
+      message.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      message.sender.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesPriority =
+      filterPriority === 'all' || message.priority === filterPriority;
+    return matchesSearch && matchesPriority;
+  });
+
+  // Mark notification as read
+  const markNotificationRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  };
+
+  // Mark message as read
+  const markMessageRead = (id: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, read: true } : m))
+    );
+  };
+
+  // Add message
+  const addMessage = (sender: string, content: string, priority: 'high' | 'medium' | 'low') => {
+    setMessages(prev => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        sender,
+        content,
+        timestamp: new Date(),
+        read: false,
+        priority,
+      },
+    ]);
+  };
+
+  // Delete message
+  const deleteMessage = (id: string) => {
+    setMessages(prev => prev.filter(m => m.id !== id));
+  };
+
+  // Add notification
+  const addNotification = (content: string) => {
+    setNotifications(prev => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        content,
+        timestamp: new Date(),
+        read: false,
+      },
+    ]);
+  };
+
+  // Delete notification
+  const deleteNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
   return (
@@ -107,63 +190,110 @@ export default function CommunicationDashboard() {
               <span>Notifications</span>
             </div>
           </button>
-          <button
-            className={getTabClassName('team')}
-            onClick={() => setActiveTab('team')}
-          >
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              <span>Team</span>
-            </div>
-          </button>
-          <button
-            className={getTabClassName('schedule')}
-            onClick={() => setActiveTab('schedule')}
-          >
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              <span>Schedule</span>
-            </div>
-          </button>
         </div>
 
         {/* Main Content Area */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           {activeTab === 'messages' && (
-            <div className="space-y-4">
-              {mockMessages.map((message) => (
-                <div key={message.id} className={getMessageClassName(message)}>
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-semibold text-gray-900">{message.sender}</h3>
-                    <span className="text-sm text-gray-500">
-                      {message.timestamp.toLocaleTimeString()}
-                    </span>
+            <>
+              <form
+                className="flex flex-col md:flex-row gap-2 mb-4"
+                onSubmit={e => {
+                  e.preventDefault();
+                  const form = e.target as typeof e.target & { sender: { value: string }, content: { value: string }, priority: { value: string } };
+                  if (form.content.value.trim()) {
+                    addMessage(form.sender.value, form.content.value, form.priority.value as any);
+                    form.content.value = '';
+                  }
+                }}
+              >
+                <input name="sender" placeholder="Sender" className="border rounded px-2 py-1" defaultValue="You" required />
+                <input name="content" placeholder="Type a message..." className="border rounded px-2 py-1 flex-1" required />
+                <select name="priority" className="border rounded px-2 py-1">
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                <button type="submit" className="bg-blue-500 text-white px-4 py-1 rounded">Send</button>
+              </form>
+              <div className="space-y-4">
+                {filteredMessages.length === 0 && (
+                  <div className="text-center text-gray-400">No messages found.</div>
+                )}
+                {filteredMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={getMessageClassName(message)}
+                    onClick={() => markMessageRead(message.id)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-semibold text-gray-900">{message.sender}</h3>
+                      <span className="text-sm text-gray-500">
+                        {message.timestamp.toLocaleTimeString()}
+                        {!message.read && (
+                          <span className="ml-2 text-xs text-blue-500">●</span>
+                        )}
+                      </span>
+                      <button
+                        className="ml-2 text-xs text-red-500 hover:underline"
+                        onClick={e => { e.stopPropagation(); deleteMessage(message.id); }}
+                        title="Delete"
+                      >Delete</button>
+                    </div>
+                    <p className="text-gray-600">{message.content}</p>
                   </div>
-                  <p className="text-gray-600">{message.content}</p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
 
           {activeTab === 'notifications' && (
-            <div className="text-center py-8 text-gray-500">
-              <Bell className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p>No new notifications</p>
-            </div>
-          )}
-
-          {activeTab === 'team' && (
-            <div className="text-center py-8 text-gray-500">
-              <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p>Team view coming soon</p>
-            </div>
-          )}
-
-          {activeTab === 'schedule' && (
-            <div className="text-center py-8 text-gray-500">
-              <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p>Schedule view coming soon</p>
-            </div>
+            <>
+              <form
+                className="flex flex-col md:flex-row gap-2 mb-4"
+                onSubmit={e => {
+                  e.preventDefault();
+                  const form = e.target as typeof e.target & { content: { value: string } };
+                  if (form.content.value.trim()) {
+                    addNotification(form.content.value);
+                    form.content.value = '';
+                  }
+                }}
+              >
+                <input name="content" placeholder="Add notification..." className="border rounded px-2 py-1 flex-1" required />
+                <button type="submit" className="bg-yellow-500 text-white px-4 py-1 rounded">Add</button>
+              </form>
+              <div className="space-y-4">
+                {notifications.length === 0 && (
+                  <div className="text-center text-gray-400">No notifications.</div>
+                )}
+                {notifications.map((notification) => (
+                  <div
+                    key={notification.id}
+                    className={`p-4 rounded-lg border ${notification.read ? 'bg-white' : 'bg-yellow-50 border-yellow-200'}`}
+                    onClick={() => markNotificationRead(notification.id)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-gray-900 font-medium">Notification</span>
+                      <span className="text-sm text-gray-500">
+                        {notification.timestamp.toLocaleTimeString()}
+                        {!notification.read && (
+                          <span className="ml-2 text-xs text-yellow-500">●</span>
+                        )}
+                      </span>
+                      <button
+                        className="ml-2 text-xs text-red-500 hover:underline"
+                        onClick={e => { e.stopPropagation(); deleteNotification(notification.id); }}
+                        title="Delete"
+                      >Delete</button>
+                    </div>
+                    <p className="text-gray-600">{notification.content}</p>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

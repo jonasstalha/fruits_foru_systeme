@@ -247,7 +247,7 @@ export default function GererLesCommandesClient() {
                     <div className="flex flex-col space-y-1">
                       {order.items.map((item, idx) => (
                         <span key={idx} className="text-sm text-gray-600">
-                          {item.quantity} kg - {item.type} (Caliber {item.caliber})
+                          {item.quantity} palette{item.quantity > 1 ? 's' : ''} - {item.type} (Caliber {item.caliber})
                         </span>
                       ))}
                     </div>

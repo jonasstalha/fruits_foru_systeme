@@ -18,16 +18,6 @@ const DEFAULT_FILTERS: FilterState = {
 
 export default function DashboardPage() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-  const [showSections, setShowSections] = useState(true); // State to toggle sections
-  const [showDataBoxes, setShowDataBoxes] = useState(true); // State to toggle visibility
-
-  const toggleSections = () => {
-    setShowSections((prev) => !prev);
-  };
-
-  const toggleDataBoxes = () => {
-    setShowDataBoxes((prev) => !prev);
-  };
 
   // Fetch farms data
   const { data: farms = [], isLoading: isLoadingFarms } = useQuery({
@@ -45,15 +35,12 @@ export default function DashboardPage() {
   
   // Ensure all required variables are defined
   const lots: Lot[] = avocadoTrackingData.map((tracking, index) => ({
-    id: (index + 1).toString(), // Convert id to string
+    id: (index + 1).toString(),
+    name: `Lot ${tracking.harvest.lotNumber || index + 1}`,
+    description: `Lot from ${tracking.harvest.farmLocation}, variety: ${tracking.harvest.variety}`,
     lotNumber: tracking.harvest.lotNumber,
-    farmId: "1", // Default to first farm as a string
-    harvestDate: tracking.harvest.harvestDate,
-    initialQuantity: 1000, // Default value
-    currentStatus: "shipped", // Default value
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    notes: `Lot from ${tracking.harvest.farmLocation}`
   }));
   
   // Fetch stats data
@@ -64,36 +51,16 @@ export default function DashboardPage() {
   
   // Handle filter changes
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
-    setFilters(prev => ({ ...prev, ...newFilters }));
+    setFilters((prev: FilterState) => ({ ...prev, ...newFilters }));
   };
   
   // Complete the code block for filtering lots
   const filteredLots = lots.filter(lot => {
     // Filter by search term
-    if (filters.search && !lot.lotNumber.toLowerCase().includes(filters.search.toLowerCase())) {
+    if (filters.search && !(lot.lotNumber || '').toLowerCase().includes(filters.search.toLowerCase())) {
       return false;
     }
-
-    // Filter by farm
-    if (filters.farmId !== 'all' && lot.farmId !== filters.farmId) { // Compare as strings
-      return false;
-    }
-
-    // Filter by status
-    if (filters.status !== 'all' && lot.currentStatus !== filters.status) {
-      return false;
-    }
-
-    // Filter by date
-    if (filters.date) {
-      const harvestDate = new Date(lot.harvestDate);
-      const filterDate = new Date(filters.date);
-
-      if (harvestDate.toDateString() !== filterDate.toDateString()) {
-        return false;
-      }
-    }
-
+    // No farmId, status, or harvestDate in Lot type, so skip those filters
     return true;
   });
   
@@ -104,36 +71,25 @@ export default function DashboardPage() {
   const isLoading = isLoadingFarms || isLoadingAvocadoTracking || isLoadingStats;
   
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <button
-        onClick={toggleDataBoxes}
-        className="mb-4 px-4 py-2 bg-blue-500 text-white rounded"
-      >
-        {showDataBoxes ? "Hide Data Boxes" : "Show Data Boxes"}
-      </button>
+    <div>
+      {/* Filter Bar Section */}
+      <section>
+        <FilterBar 
+          filters={filters} 
+          onFilterChange={handleFilterChange} 
+          farms={farms} 
+          isLoading={isLoadingFarms} 
+        />
+      </section>
 
-      {showDataBoxes && (
-        <>
-          {/* Filter Bar Section */}
-          <section>
-            <FilterBar 
-              filters={filters} 
-              onFilterChange={handleFilterChange} 
-              farms={farms} 
-              isLoading={isLoadingFarms} 
-            />
-          </section>
-
-          {/* Lots Table Section */}
-          <section>
-            <LotTable 
-              lots={filteredLots} 
-              isLoading={isLoadingAvocadoTracking} 
-              farms={farms} 
-            />
-          </section>
-        </>
-      )}
+      {/* Lots Table Section */}
+      <section>
+        <LotTable 
+          lots={filteredLots} 
+          isLoading={isLoadingAvocadoTracking} 
+          farms={farms} 
+        />
+      </section>
 
       {/* Action Buttons */}
       {canCreateEntries && (

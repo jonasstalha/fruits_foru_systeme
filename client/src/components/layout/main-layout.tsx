@@ -12,8 +12,7 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children }: MainLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showAlert, setShowAlert] = useState(false);
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
 
   const logout = () => {
     localStorage.removeItem("user");
@@ -100,7 +99,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
               )}
             </div>
             <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="icon" onClick={() => setShowAlert(!showAlert)}>
+              <Button variant="ghost" size="icon" onClick={() => navigate('/communication-dashboard')}>
                 <Bell className="h-5 w-5" />
               </Button>
               <Button variant="ghost" size="icon" onClick={logout}>
@@ -110,18 +109,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
           </div>
         </header>
 
-        {/* Alert Notification */}
-        {showAlert && (
-          <div className="px-4 md:px-6 mt-4">
-            <Alert>
-              <Bell className="h-4 w-4" />
-              <div>
-                <AlertTitle>Notifications</AlertTitle>
-                <AlertDescription>You have no new notifications.</AlertDescription>
-              </div>
-            </Alert>
-          </div>
-        )}
+  
 
         {/* Page Content */}
         <main className="p-4 md:p-6">{children}</main>

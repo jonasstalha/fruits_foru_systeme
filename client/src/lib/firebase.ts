@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getStorage, connectStorageEmulator } from "firebase/storage";
+import { getStorage } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 
 // Your web app's Firebase configuration
@@ -18,14 +18,8 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize services
 const firestore = getFirestore(app);
-const storage = getStorage(app, `gs://${firebaseConfig.storageBucket}`);
+const storage = getStorage(app);
 const auth = getAuth(app);
-
-// Configure storage for CORS
-if (process.env.NODE_ENV === 'development') {
-  // In development, we'll use the emulator
-  connectStorageEmulator(storage, 'localhost', 9199);
-}
 
 // Export services
 export { app, firestore, storage, auth };

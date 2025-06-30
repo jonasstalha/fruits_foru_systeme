@@ -1075,14 +1075,8 @@ export default function FichedExpidition() {
                 </>
               )}
             </button>
-            
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-2 bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl"
-            >
-              <Printer size={20} />
-              Imprimer
-            </button>
+          
+        
             
             <button
               onClick={goToHistory}

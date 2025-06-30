@@ -105,23 +105,36 @@ const initializeFormData = (): FormData => ({
   palettes: Array(5).fill(null).map(() => emptyPaletteData())
 });
 
+const LOCAL_STORAGE_KEY = 'quality_rapports';
+
 export default function ProductQualityControlForm() {
   const [formData, setFormData] = useState<FormData>(initializeFormData());
   const [paletteCount, setPaletteCount] = useState<number>(5);
   const [activeTab, setActiveTab] = useState<number>(0);
-  const [results, setResults] = useState<{
-    minCharacteristics: number;
-    totalDefects: number;
-    missingBrokenGrains: number;
-    weightConformity: number;
-    isConform: boolean;
-  }>({
+  // Add results state for calculated results
+  const [results, setResults] = useState({
     minCharacteristics: 0,
     totalDefects: 0,
     missingBrokenGrains: 0,
     weightConformity: 0,
     isConform: false
   });
+  const [savedRapports, setSavedRapports] = useState<FormData[]>([]);
+  const [filteredRapports, setFilteredRapports] = useState<FormData[]>([]);
+
+
+  useEffect(() => {
+    // Load saved rapports from localStorage on mount
+    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setSavedRapports(parsed);
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+  }, []);
 
   useEffect(() => {
     // Adjust palette count if needed
@@ -242,6 +255,29 @@ export default function ProductQualityControlForm() {
   };
 
   const handleSave = () => {
+    // Build the lot object for chief phase
+    const lot = {
+      id: formData.clientLot || `LOT-${Date.now()}`,
+      date: formData.date,
+      controller: 'N/A', // You can add a controller field to the form if needed
+      palletNumber: formData.shipmentNumber || 'N/A',
+      calibres: formData.palettes.map(p => Number(p.size)).filter(Boolean),
+      status: 'pending',
+      // Optionally, you can keep the full rapport as well
+      rapport: formData
+    };
+
+    // Save to localStorage
+    const prev = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
+    prev.push(lot);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(prev));
+
+    setSavedRapports(prevRapports => {
+      const updated = [...prevRapports, formData];
+      const filtered = updated.filter(r => r.clientLot === formData.clientLot);
+      setFilteredRapports(filtered);
+      return updated;
+    });
     alert('Form data saved!');
     console.log(formData);
     console.log(results);
@@ -252,331 +288,347 @@ export default function ProductQualityControlForm() {
     return (total / formData.palettes.length).toFixed(2);
   };
 
-const handleGenerateReport = () => {
-  const doc = new jsPDF('landscape', 'mm', 'a4'); // Landscape orientation
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  
-  // Exact colors from image
-  const greenHeader = [76, 175, 80]; // Main green header
-  const lightGreen = [200, 230, 201]; // Light green for "Moyenne" column
-  const alternateRow = [245, 245, 245]; // Very light gray for alternate rows
-  const borderColor = [0, 0, 0]; // Black borders
-  
-  // Helper function to draw table exactly like image
-  const drawTable = (startY, sectionTitle, headers, data, hasAverageColumn = true) => {
-    let currentY = startY;
-    const rowHeight = 6; // Smaller row height like in image
-    const tableWidth = pageWidth - 20;
+  const handleGenerateReport = () => {
+    const doc = new jsPDF('landscape', 'mm', 'a4'); // Landscape orientation
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     
-    // Calculate exact column widths like in image
-    let columnWidths;
-    if (hasAverageColumn) {
-      // First column wider, 25 narrow columns, average column medium
-      columnWidths = [55, ...Array(25).fill(8.8), 18]; // Total: 55 + (25*8.8) + 18 = 293
-    } else {
-      // For tolerance table - 3 columns
-      columnWidths = [120, 60, 60];
-    }
+    // Exact colors from image
+    const greenHeader: [number, number, number] = [76, 175, 80]; // Main green header
+    const lightGreen: [number, number, number] = [200, 230, 201]; // Light green for "Moyenne" column
+    const alternateRow: [number, number, number] = [245, 245, 245]; // Very light gray for alternate rows
+    const borderColor: [number, number, number] = [0, 0, 0]; // Black borders
     
-    // Scale to fit page width
-    const totalWidth = columnWidths.reduce((a, b) => a + b, 0);
-    const scaledWidths = columnWidths.map(width => (width / totalWidth) * tableWidth);
-    
-    // Draw main header row with section title
-    doc.setFillColor(...greenHeader);
-    doc.setDrawColor(...borderColor);
-    doc.setLineWidth(0.3);
-    doc.rect(10, currentY, tableWidth, rowHeight, 'FD');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    
-    let currentX = 10;
-    headers.forEach((header, index) => {
-      if (index === 0) {
-        // Section title in first column
-        doc.text(sectionTitle, currentX + 2, currentY + 4);
-      } else if (index === headers.length - 1 && hasAverageColumn) {
-        // "Moyenne" column with light green background
-        doc.setFillColor(...lightGreen);
-        doc.rect(currentX, currentY, scaledWidths[index], rowHeight, 'F');
-        doc.setTextColor(0, 0, 0);
-        doc.setFont('helvetica', 'bold');
-        const textWidth = doc.getTextWidth(header);
-        doc.text(header, currentX + (scaledWidths[index] / 2) - (textWidth / 2), currentY + 4);
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-      } else if (index > 0) {
-        // Palette numbers
-        const textWidth = doc.getTextWidth(header);
-        doc.text(header, currentX + (scaledWidths[index] / 2) - (textWidth / 2), currentY + 4);
+    // Helper function to draw table exactly like image
+    const drawTable = (
+      startY: number,
+      sectionTitle: string,
+      headers: string[],
+      data: (string | number)[][],
+      hasAverageColumn: boolean = true,
+      solidGreen: boolean = false
+    ) => {
+      let currentY = startY;
+      const rowHeight = 6; // Smaller row height like in image
+      const tableWidth = pageWidth - 20;
+      
+      // Calculate exact column widths like in image
+      let columnWidths;
+      if (hasAverageColumn) {
+        // First column wider, 25 narrow columns, average column medium
+        columnWidths = [55, ...Array(25).fill(8.8), 18]; // Total: 55 + (25*8.8) + 18 = 293
+      } else {
+        // For tolerance table - 3 columns
+        columnWidths = [120, 60, 60];
       }
       
-      // Draw vertical border
-      if (index > 0) {
-        doc.line(currentX, currentY, currentX, currentY + rowHeight);
-      }
-      currentX += scaledWidths[index];
-    });
-    
-    // Right border
-    doc.line(currentX, currentY, currentX, currentY + rowHeight);
-    currentY += rowHeight;
-    
-    // Draw data rows
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    
-    data.forEach((row, rowIndex) => {
-      // Alternate row background (very subtle)
-      if (rowIndex % 2 === 1) {
-        doc.setFillColor(...alternateRow);
-        doc.rect(10, currentY, tableWidth, rowHeight, 'F');
-      }
+      // Scale to fit page width
+      const totalWidth = columnWidths.reduce((a, b) => a + b, 0);
+      const scaledWidths = columnWidths.map(width => (width / totalWidth) * tableWidth);
       
-      currentX = 10;
-      row.forEach((cell, cellIndex) => {
-        // Set text color
-        doc.setTextColor(0, 0, 0);
-        
-        // Handle average column coloring
-        if (cellIndex === row.length - 1 && hasAverageColumn) {
+      // Draw main header row with section title
+      doc.setFillColor(...greenHeader);
+      doc.setDrawColor(...borderColor);
+      doc.setLineWidth(0.3);
+      doc.rect(10, currentY, tableWidth, rowHeight, 'FD');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      
+      let currentX = 10;
+      headers.forEach((header, index) => {
+        if (index === 0) {
+          // Section title in first column
+          doc.text(sectionTitle, currentX + 2, currentY + 4);
+        } else if (index === headers.length - 1 && hasAverageColumn) {
+          // "Moyenne" column with light green background
           doc.setFillColor(...lightGreen);
-          doc.rect(currentX, currentY, scaledWidths[cellIndex], rowHeight, 'F');
+          doc.rect(currentX, currentY, scaledWidths[index], rowHeight, 'F');
+          doc.setTextColor(0, 0, 0);
           doc.setFont('helvetica', 'bold');
-        } else {
-          doc.setFont('helvetica', 'normal');
-        }
-        
-        if (cellIndex === 0) {
-          // Parameter name - left aligned
-          doc.text(String(cell || ''), currentX + 2, currentY + 4);
-        } else {
-          // Data values - center aligned
-          const cellText = String(cell || '');
-          const textWidth = doc.getTextWidth(cellText);
-          doc.text(cellText, currentX + (scaledWidths[cellIndex] / 2) - (textWidth / 2), currentY + 4);
+          const textWidth = doc.getTextWidth(header);
+          doc.text(header, currentX + (scaledWidths[index] / 2) - (textWidth / 2), currentY + 4);
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+        } else if (index > 0) {
+          // Palette numbers
+          const textWidth = doc.getTextWidth(header);
+          doc.text(header, currentX + (scaledWidths[index] / 2) - (textWidth / 2), currentY + 4);
         }
         
         // Draw vertical border
-        if (cellIndex > 0) {
-          doc.setDrawColor(...borderColor);
+        if (index > 0) {
           doc.line(currentX, currentY, currentX, currentY + rowHeight);
         }
-        currentX += scaledWidths[cellIndex];
+        currentX += scaledWidths[index];
       });
       
-      // Right border and horizontal border
+      // Right border
       doc.line(currentX, currentY, currentX, currentY + rowHeight);
-      doc.line(10, currentY + rowHeight, 10 + tableWidth, currentY + rowHeight);
       currentY += rowHeight;
-    });
+      
+      // Draw data rows
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      data.forEach((row: (string | number)[], rowIndex: number) => {
+        let fillRow = false;
+        if (solidGreen) fillRow = true;
+        else if (rowIndex % 2 === 1) fillRow = true;
+        if (fillRow) {
+          if (solidGreen) {
+            doc.setFillColor(...greenHeader);
+          } else {
+            doc.setFillColor(...alternateRow);
+          }
+          doc.rect(10, currentY, tableWidth, rowHeight, 'F');
+        }
+        let currentX = 10;
+        row.forEach((cell: string | number, cellIndex: number) => {
+          // Set text color
+          doc.setTextColor(solidGreen ? 255 : 0, solidGreen ? 255 : 0, solidGreen ? 255 : 0);
+          
+          // Handle average column coloring
+          if (cellIndex === row.length - 1 && hasAverageColumn && !solidGreen) {
+            doc.setFillColor(...lightGreen);
+            doc.rect(currentX, currentY, scaledWidths[cellIndex], rowHeight, 'F');
+            doc.setFont('helvetica', 'bold');
+          } else {
+            doc.setFont('helvetica', 'normal');
+          }
+          
+          if (cellIndex === 0) {
+            // Parameter name - left aligned
+            doc.text(String(cell || ''), currentX + 2, currentY + 4);
+          } else {
+            // Data values - center aligned
+            const cellText = String(cell || '');
+            const textWidth = doc.getTextWidth(cellText);
+            doc.text(cellText, currentX + (scaledWidths[cellIndex] / 2) - (textWidth / 2), currentY + 4);
+          }
+          
+          // Draw vertical border
+          if (cellIndex > 0) {
+            doc.setDrawColor(...borderColor);
+            doc.line(currentX, currentY, currentX, currentY + rowHeight);
+          }
+          currentX += scaledWidths[cellIndex];
+        });
+        
+        // Right border and horizontal border
+        doc.line(currentX, currentY, currentX, currentY + rowHeight);
+        doc.line(10, currentY + rowHeight, 10 + tableWidth, currentY + rowHeight);
+        currentY += rowHeight;
+      });
+      
+      return currentY + 3;
+    };
+
+    // PAGE 1 - Exact header reproduction
+    // Main green header bar
+    doc.setFillColor(...greenHeader);
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.5);
+    doc.rect(10, 10, pageWidth - 20, 18, 'FD');
     
-    return currentY + 3;
+    // Logo section (left)
+    doc.setFillColor(255, 255, 255);
+    doc.rect(12, 12, 35, 14, 'FD');
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.text('FRESH FRUIT', 14, 16);
+    doc.text('EXPORT', 14, 19);
+    doc.text('LOGO', 14, 22);
+    
+    // Main title (center)
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RAPPORT QUALITÉ', (pageWidth / 2) - 32, 18);
+    doc.setFontSize(11);
+    doc.text('CONTROLE DU PRODUIT', (pageWidth / 2) - 35, 24);
+    
+    // Document info (right)
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text('MO- Exp/061.1', pageWidth - 55, 14);
+    doc.text('Version 1', pageWidth - 55, 17);
+    doc.text('22/11/2024', pageWidth - 55, 20);
+    doc.text('Page 1/2', pageWidth - 55, 26);
+    
+    // Product information section with exact layout
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    
+    const infoY = 35;
+    // First row
+    doc.text('Date:', 10, infoY);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.date || '24/11/2024', 25, infoY);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text('Produit:', 65, infoY);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.product || 'AVOCAT', 85, infoY);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text('Variété:', 125, infoY);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.variety || 'FUERTE', 145, infoY);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text('Campagne:', 185, infoY);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.campaign || '2024-2025', 210, infoY);
+    
+    // Second row
+    const infoY2 = infoY + 6;
+    doc.setFont('helvetica', 'normal');
+    doc.text('N° Expédition:', 10, infoY2);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.shipmentNumber || '46', 45, infoY2);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text('Type d\'emballage:', 65, infoY2);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.packagingType || 'Carton PLU 210', 105, infoY2);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text('Catégorie:', 155, infoY2);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.category || '1', 180, infoY2);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text('N° d\'Exportateur:', 200, infoY2);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.exporterNumber || '180460', 245, infoY2);
+    
+    // Third row
+    const infoY3 = infoY2 + 6;
+    doc.setFont('helvetica', 'normal');
+    doc.text('Lot client:', 10, infoY3);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.clientLot || '2 401 017', 35, infoY3);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text('Fréquence:', 155, infoY3);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formData.frequency || '1 Carton/palette', 185, infoY3);
+
+    // Tables with exact data
+    let currentY = 55;
+    
+    // Palette headers (1-25)
+    const paletteHeaders = ['', ...Array.from({length: 25}, (_, i) => (i + 1).toString()), 'Moyenne'];
+    
+    // I) Controle Poids
+    const weightData = [
+      ['Poids du colis (kg)', '10,00', '10,00', '10,00', '10,00', '10,00', '10,15', '10,15', '10,15', '10,15', '10,15', '10,00', '10,00', '10,15', '10,15', '10,15', '10,15', '10,15', '10,15', '10,00', '10,15', '10,15', '4,12', '4,15', '10,00', '10,15', '9,95'],
+      ['Poids net requis (kg)', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00'],
+      ['Poids net (%)', '1,11', '1,11', '1,11', '1,11', '1,11', '1,28', '1,28', '1,28', '1,28', '1,28', '1,11', '1,11', '1,28', '1,28', '1,28', '1,28', '1,28', '1,28', '1,11', '1,28', '1,28', '2,89', '2,89', '1,11', '1,28', '1,24']
+    ];
+    
+    currentY = drawTable(currentY, 'I) Controle Poids', paletteHeaders, weightData);
+    
+    // II) Controle des caractéristiques minimales
+    const minCharData = [
+      // Firmness (kgf) [13-14] (string input with Moyenne)
+      ['Firmness (kgf) [13-14]', ...formData.palettes.map(p => p.firmness || ''), (() => {
+        const nums = formData.palettes
+          .map(p => parseFloat(p.firmness || ''))
+          .filter(v => !isNaN(v));
+        return nums.length ? (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2) : '';
+      })()],
+      // Pourriture (anthracnose) (%)
+      ['Pourriture (anthracnose) (%)', ...formData.palettes.map(p => p.rotting || ''), calculateAverages('rotting')],
+      // Matière étrangère visible (sable, les cheveux, ...) (%)
+      ['Matière étrangère visible (sable, les cheveux, ...) (%)', ...formData.palettes.map(p => p.foreignMatter || ''), calculateAverages('foreignMatter')],
+      // Flétri (C/NC)
+      ['Flétri', ...formData.palettes.map(p => p.withered || ''), ''],
+      // Endoderme durci (%)
+      ['Endoderme durci (%)', ...formData.palettes.map(p => p.hardenedEndoderm || ''), calculateAverages('hardenedEndoderm')],
+      // Présence de parasite (%)
+      ['Présence de parasite (%)', ...formData.palettes.map(p => p.parasitePresence || ''), calculateAverages('parasitePresence')],
+      // Présence d’attaque de parasite (%)
+      ['Présence d’attaque de parasite (%)', ...formData.palettes.map(p => p.parasiteAttack || ''), calculateAverages('parasiteAttack')],
+      // Température (C/NC)
+      ['Température', ...formData.palettes.map(p => p.temperature || ''), ''],
+      // Odeur ou saveur d’étranger (C/NC)
+      ['Odeur ou saveur d’étranger', ...formData.palettes.map(p => p.odorOrTaste || ''), '']
+    ];
+    currentY = drawTable(currentY, 'II) Controle des caractéristiques minimales', paletteHeaders, minCharData);
+    
+    // III) Controle des caractéristiques spécifiques  
+    const specCharData = [
+      ['Défaut de forme', ...formData.palettes.map(p => p.shapeDefect || ''), calculateAverages('shapeDefect')],
+      ['Défaut de coloration', ...formData.palettes.map(p => p.colorDefect || ''), calculateAverages('colorDefect')],
+      ['Défaut d\'épiderme', ...formData.palettes.map(p => p.epidermisDefect || ''), calculateAverages('epidermisDefect')],
+      ['Homogénéité (C/NC)', ...formData.palettes.map(p => p.homogeneity || ''), ''],
+      ['Extrémité des grains', ...formData.palettes.map(p => p.corners || ''), calculateAverages('corners')],
+      ['Manque et cassés', ...formData.palettes.map(p => p.missingBrokenGrains || ''), calculateAverages('missingBrokenGrains')],
+      ['Calibre', ...formData.palettes.map(p => p.size || ''), '']
+    ];
+    
+    currentY = drawTable(currentY, 'III) Controle des caractéristiques spécifiques', paletteHeaders, specCharData);
+    
+    // PAGE 2
+    doc.addPage('landscape');
+    currentY = 20;
+    
+    // Add page header
+    doc.setFillColor(...greenHeader);
+    doc.rect(10, 10, pageWidth - 20, 8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('RAPPORT QUALITÉ - CONTROLE DU PRODUIT (Suite)', (pageWidth / 2) - 70, 16);
+    doc.setFontSize(7);
+    doc.text('Page 2/2', pageWidth - 30, 16);
+
+    currentY = 25;
+    
+    // IV) Controle du produit fini
+    const finalProductData = [
+      ['Calibre', ...formData.palettes.map(p => p.size || ''), ''],
+      ['Nombre colis/palette', ...formData.palettes.map(p => p.packageCount || ''), ''],
+      ["Etat d’emballage", ...formData.palettes.map(p => p.packagingState || ''), ''],
+      ["Présence d’étiquetage", ...formData.palettes.map(p => p.labelingPresence || ''), ''],
+      ["Fiche palette", ...formData.palettes.map(p => p.paletteSheet || ''), calculateAverages('paletteSheet')],
+      ["N° Lot Interne", ...formData.palettes.map(p => p.internalLotNumber || ''), calculateAverages('internalLotNumber')],
+      ["Conformité de la palette", ...formData.palettes.map(p => p.paletteConformity || ''), '']
+    ];
+    
+    currentY = drawTable(currentY, 'IV) Controle du produit fini', paletteHeaders, finalProductData);
+    
+    // V) Tolérance
+    const toleranceHeaders = ['Tolérance', 'Résultat moyen', 'Conforme', 'Non conforme'];
+    const toleranceData = [
+      ['Caractéristiques minimales (≤ 10%)', '', '', ''],
+      ['Total des défauts : catégorie I + caractéristiques minimales (≤ 10%)', '', '', ''],
+      ['Extrémité des grains manques et cassées (≤ 10%)', '', '', ''],
+      ['Poids selon le type d’emballage (poids net +1%)', '', '', ''],
+    ];
+    currentY = drawTable(currentY, 'V) Tolérance', toleranceHeaders, toleranceData, true, true);
+    
+   
+    // Signature section
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    
+    const sigY = currentY + 30;
+    doc.text('Contrôleur: ________________________', pageWidth - 120, sigY);
+    doc.text('Date: ________________________', pageWidth - 120, sigY + 10);
+    doc.text('Signature:', pageWidth - 120, sigY + 20);
+    
+    // Signature box
+    doc.rect(pageWidth - 80, sigY + 22, 60, 15, 'D');
+
+    // Save the PDF
+    doc.save(`Quality_Control_Report_${formData.date || new Date().toISOString().split('T')[0]}.pdf`);
   };
-
-  // PAGE 1 - Exact header reproduction
-  // Main green header bar
-  doc.setFillColor(...greenHeader);
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.5);
-  doc.rect(10, 10, pageWidth - 20, 18, 'FD');
-  
-  // Logo section (left)
-  doc.setFillColor(255, 255, 255);
-  doc.rect(12, 12, 35, 14, 'FD');
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(6);
-  doc.setFont('helvetica', 'normal');
-  doc.text('FRESH FRUIT', 14, 16);
-  doc.text('EXPORT', 14, 19);
-  doc.text('LOGO', 14, 22);
-  
-  // Main title (center)
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('RAPPORT QUALITÉ', (pageWidth / 2) - 32, 18);
-  doc.setFontSize(11);
-  doc.text('CONTROLE DU PRODUIT', (pageWidth / 2) - 35, 24);
-  
-  // Document info (right)
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
-  doc.text('MO- Exp/061.1', pageWidth - 55, 14);
-  doc.text('Version 1', pageWidth - 55, 17);
-  doc.text('22/11/2024', pageWidth - 55, 20);
-  doc.text('Page 1/2', pageWidth - 55, 26);
-  
-  // Product information section with exact layout
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  
-  const infoY = 35;
-  // First row
-  doc.text('Date:', 10, infoY);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.date || '24/11/2024', 25, infoY);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text('Produit:', 65, infoY);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.product || 'AVOCAT', 85, infoY);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text('Variété:', 125, infoY);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.variety || 'FUERTE', 145, infoY);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text('Campagne:', 185, infoY);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.campaign || '2024-2025', 210, infoY);
-  
-  // Second row
-  const infoY2 = infoY + 6;
-  doc.setFont('helvetica', 'normal');
-  doc.text('N° Expédition:', 10, infoY2);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.shipmentNumber || '46', 45, infoY2);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text('Type d\'emballage:', 65, infoY2);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.packagingType || 'Carton PLU 210', 105, infoY2);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text('Catégorie:', 155, infoY2);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.category || '1', 180, infoY2);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text('N° d\'Exportateur:', 200, infoY2);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.exporterNumber || '180460', 245, infoY2);
-  
-  // Third row
-  const infoY3 = infoY2 + 6;
-  doc.setFont('helvetica', 'normal');
-  doc.text('Lot client:', 10, infoY3);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.clientLot || '2 401 017', 35, infoY3);
-  
-  doc.setFont('helvetica', 'normal');
-  doc.text('Fréquence:', 155, infoY3);
-  doc.setFont('helvetica', 'bold');
-  doc.text(formData.frequency || '1 Carton/palette', 185, infoY3);
-
-  // Tables with exact data
-  let currentY = 55;
-  
-  // Palette headers (1-25)
-  const paletteHeaders = ['', ...Array.from({length: 25}, (_, i) => (i + 1).toString()), 'Moyenne'];
-  
-  // I) Controle Poids
-  const weightData = [
-    ['Poids du colis (kg)', '10,00', '10,00', '10,00', '10,00', '10,00', '10,15', '10,15', '10,15', '10,15', '10,15', '10,00', '10,00', '10,15', '10,15', '10,15', '10,15', '10,15', '10,15', '10,00', '10,15', '10,15', '4,12', '4,15', '10,00', '10,15', '9,95'],
-    ['Poids net requis (kg)', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00', '9,00'],
-    ['Poids net (%)', '1,11', '1,11', '1,11', '1,11', '1,11', '1,28', '1,28', '1,28', '1,28', '1,28', '1,11', '1,11', '1,28', '1,28', '1,28', '1,28', '1,28', '1,28', '1,11', '1,28', '1,28', '2,89', '2,89', '1,11', '1,28', '1,24']
-  ];
-  
-  currentY = drawTable(currentY, 'I) Controle Poids', paletteHeaders, weightData);
-  
-  // II) Controle des caractéristiques minimales
-  const minCharData = [
-    ['Fermeté (kgf)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Pourriture (anthracnose) (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Matière étrangère (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Flétri (%)', '5,2', '5,2', '4,5', '6,5', '5,2', '6,2', '6,5', '6,5', '5,8', '5,8', '5,8', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,2', '5,8', '5,8', '5,6'],
-    ['Endoderme durci (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Présence de parasite (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Attaque de parasite (%)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Température (°C)', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13', '13,00'],
-    ['Odeur ou goût', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']
-  ];
-  
-  currentY = drawTable(currentY, 'II) Controle des caractéristiques minimales', paletteHeaders, minCharData);
-  
-  // III) Controle des caractéristiques spécifiques  
-  const specCharData = [
-    ['Défaut de forme', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Défaut de coloration', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Défaut d\'épiderme', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Homogénéité (C/NC)', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Extrémité des grains', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Manque et cassés', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0,00'],
-    ['Calibre', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14,00']
-  ];
-  
-  currentY = drawTable(currentY, 'III) Controle des caractéristiques spécifiques', paletteHeaders, specCharData);
-
-  // PAGE 2
-  doc.addPage('landscape');
-  currentY = 20;
-  
-  // Add page header
-  doc.setFillColor(...greenHeader);
-  doc.rect(10, 10, pageWidth - 20, 8, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('RAPPORT QUALITÉ - CONTROLE DU PRODUIT (Suite)', (pageWidth / 2) - 70, 16);
-  doc.setFontSize(7);
-  doc.text('Page 2/2', pageWidth - 30, 16);
-
-  currentY = 25;
-  
-  // IV) Controle du produit fini
-  const finalProductData = [
-    ['Calibre', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14', '14'],
-    ['Nombre de colis/palette', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48', '48'],
-    ['État d\'emballage', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340'],
-    ['Présence d\'étiquetage', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '350', '358', '340', '340', '340', '340', '340', '342,5'],
-    ['Poids brut (kg)', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340'],
-    ['Poids net (kg)', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340'],
-    ['N° Lot interne', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '477', '340', '340', '340', '340', '340', '340', '346,5'],
-    ['Conformité de la palette', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340', '340']
-  ];
-  
-  currentY = drawTable(currentY, 'IV) Controle du produit fini', paletteHeaders, finalProductData);
-  
-  // V) Tolérance
-  const toleranceHeaders = ['Tolérance', 'Résultat moyen', 'Conformité'];
-  const toleranceData = [
-    ['Contrôle des caractéristiques minimales', '0,00', 'Conforme'],
-    ['Paramètres de catégorie I (≤ 10 %)', '0,00', 'Conforme']
-  ];
-  
-  currentY = drawTable(currentY, 'V) Tolérance', toleranceHeaders, toleranceData, false);
-  
-  // Final result section
-  doc.setFillColor(...greenHeader);
-  doc.rect(10, currentY + 5, pageWidth - 20, 15, 'FD');
-  
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.text('LOT CONFORME', (pageWidth / 2) - 25, currentY + 15);
-  
-  // Signature section
-  doc.setTextColor(0, 0, 0);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  
-  const sigY = currentY + 30;
-  doc.text('Contrôleur: ________________________', pageWidth - 120, sigY);
-  doc.text('Date: ________________________', pageWidth - 120, sigY + 10);
-  doc.text('Signature:', pageWidth - 120, sigY + 20);
-  
-  // Signature box
-  doc.rect(pageWidth - 80, sigY + 22, 60, 15, 'D');
-
-  // Save the PDF
-  doc.save(`Quality_Control_Report_${formData.date || new Date().toISOString().split('T')[0]}.pdf`);
-};
 
   const tabTitles = [
     "Basic Info",
@@ -585,7 +637,7 @@ const handleGenerateReport = () => {
     "Controle des parametres categorie I",
     "Controle produit fini",
     "Tolerance",
-    "Results",
+
   ];
 
   return (
@@ -605,6 +657,35 @@ const handleGenerateReport = () => {
             Download Report as PDF
           </button>
 
+          {/* Save button */}
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition mb-6 ml-4"
+          >
+            <Save className="inline-block mr-2 w-4 h-4" />
+            Save
+          </button>
+
+          {/* Display exact rapports for the current lot after save */}
+          {filteredRapports.length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-xl font-semibold mb-4 text-green-700">Rapports for Lot: {formData.clientLot}</h2>
+              {filteredRapports.map((rapport, idx) => (
+                <div key={idx} className="mb-4 p-4 border rounded-lg bg-gray-50">
+                  <div className="font-medium mb-2">Date: {rapport.date} | Product: {rapport.product} | Variety: {rapport.variety}</div>
+                  <div className="mb-2">Calibres in this rapport:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {rapport.palettes.map((p, i) => (
+                      <span key={i} className="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                        {p.size || 'N/A'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="border-b border-gray-200 mb-6">
             <div className="flex flex-wrap -mb-px">
               {tabTitles.map((title, index) => (
@@ -622,7 +703,6 @@ const handleGenerateReport = () => {
               ))}
             </div>
           </div>
-          
           {/* Tab content */}
           <div className="py-4">
             {/* Basic Information Tab */}
@@ -753,710 +833,664 @@ const handleGenerateReport = () => {
             
             {/* Controle poids Tab */}
             {activeTab === 1 && (
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="py-2 px-3 border sticky left-0 bg-gray-100 z-10">Paramètre</th>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
-                      ))}
-                      <th className="py-2 px-3 border">Moyenne</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Poids du colis (kg)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={formData.palettes[i]?.packageWeight || ''}
-                            onChange={(e) => handlePaletteChange(i, 'packageWeight', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('packageWeight')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Poids net requis (kg)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={formData.palettes[i]?.requiredNetWeight || ''}
-                            onChange={(e) => handlePaletteChange(i, 'requiredNetWeight', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('requiredNetWeight')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Poids net (%)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border text-center">
-                          {formData.palettes[i]?.packageWeight && formData.palettes[i]?.requiredNetWeight
-                            ? (((Number(formData.palettes[i].packageWeight) - Number(formData.palettes[i].requiredNetWeight)) * 100) / Number(formData.palettes[i].packageWeight)).toFixed(2)
-                            : ''}
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">
-                        {calculateAverages('netWeightPercentage')}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-            
-            {/* Controle des Caracteristiques minimales Tab */}
-            {activeTab === 2 && (
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="py-2 px-3 border sticky left-0 bg-gray-100 z-10">Paramètre</th>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
-                      ))}
-                      <th className="py-2 px-3 border">Moyenne</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Fermeté (kgf)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.firmness || ''}
-                            onChange={(e) => handlePaletteChange(i, 'firmness', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('firmness')}</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Pourriture (anthracnose) (%)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.rotting || ''}
-                            onChange={(e) => handlePaletteChange(i, 'rotting', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('rotting')}</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Matière étrangère (%)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.foreignMatter || ''}
-                            onChange={(e) => handlePaletteChange(i, 'foreignMatter', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('foreignMatter')}</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Flétri (%)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.withered || ''}
-                            onChange={(e) => handlePaletteChange(i, 'withered', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('withered')}</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Endoderme durci (%)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.hardenedEndoderm || ''}
-                            onChange={(e) => handlePaletteChange(i, 'hardenedEndoderm', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('hardenedEndoderm')}</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Présence de parasite (%)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.parasitePresence || ''}
-                            onChange={(e) => handlePaletteChange(i, 'parasitePresence', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('parasitePresence')}</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Attaque de parasite (%)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.parasiteAttack || ''}
-                            onChange={(e) => handlePaletteChange(i, 'parasiteAttack', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('parasiteAttack')}</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Température (°C)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={formData.palettes[i]?.temperature || ''}
-                            onChange={(e) => handlePaletteChange(i, 'temperature', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('temperature')}</td>
-                    </tr>
-                    
-                    <tr>
-                      <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Odeur ou goût</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.odorOrTaste || ''}
-                            onChange={(e) => handlePaletteChange(i, 'odorOrTaste', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('odorOrTaste')}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Controle des Parametres Categorie I Tab */}
-            {activeTab === 3 && (
-              <div className="overflow-x-auto mt-8">
-                <h2 className="text-lg font-semibold mb-4">Controle des Parametres Categorie I</h2>
-                <table className="min-w-full bg-white border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="py-2 px-3 border">Paramètre</th>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
-                      ))}
-                      <th className="py-2 px-3 border">Moyenne</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="py-2 px-3 border">Défaut de forma</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.shapeDefect || ''}
-                            onChange={(e) => handlePaletteChange(i, 'shapeDefect', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('shapeDefect')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Défaut de coloration</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.colorDefect || ''}
-                            onChange={(e) => handlePaletteChange(i, 'colorDefect', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('colorDefect')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Défaut d'épiderme</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.epidermDefect || ''}
-                            onChange={(e) => handlePaletteChange(i, 'epidermDefect', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('epidermDefect')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Homogénéité (C/NC)</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.homogeneity || ''}
-                            onChange={(e) => handlePaletteChange(i, 'homogeneity', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('homogeneity')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Extrémité des grains</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.grainEnds || ''}
-                            onChange={(e) => handlePaletteChange(i, 'grainEnds', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('grainEnds')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Manque et cassés</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.missingBroken || ''}
-                            onChange={(e) => handlePaletteChange(i, 'missingBroken', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('missingBroken')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Calibre</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.size || ''}
-                            onChange={(e) => handlePaletteChange(i, 'size', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('size')}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Controle Produit Fini Tab */}
-            {activeTab === 4 && (
-              <div className="overflow-x-auto mt-8">
-                <h2 className="text-lg font-semibold mb-4">Controle Produit Fini</h2>
-                <table className="min-w-full bg-white border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="py-2 px-3 border">Paramètre</th>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
-                      ))}
-                      <th className="py-2 px-3 border">Moyenne</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="py-2 px-3 border">Calibre</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.size || ''}
-                            onChange={(e) => handlePaletteChange(i, 'size', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('size')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Nombre de colis/palette</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            min="0"
-                            value={formData.palettes[i]?.packageCount || ''}
-                            onChange={(e) => handlePaletteChange(i, 'packageCount', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('packageCount')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">État d'emballage</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.packagingState || ''}
-                            onChange={(e) => handlePaletteChange(i, 'packagingState', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('packagingState')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Présence d'étiquetage</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.labelingPresence || ''}
-                            onChange={(e) => handlePaletteChange(i, 'labelingPresence', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('labelingPresence')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Coiners</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.corners || ''}
-                            onChange={(e) => handlePaletteChange(i, 'corners', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('corners')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Feuillard horizontal</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.horizontalStraps || ''}
-                            onChange={(e) => handlePaletteChange(i, 'horizontalStraps', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('horizontalStraps')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Fiche palette</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.paletteSheet || ''}
-                            onChange={(e) => handlePaletteChange(i, 'paletteSheet', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('paletteSheet')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">État de la palette en bois</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.woodenPaletteState || ''}
-                            onChange={(e) => handlePaletteChange(i, 'woodenPaletteState', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('woodenPaletteState')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Poids brut</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.grossWeight || ''}
-                            onChange={(e) => handlePaletteChange(i, 'grossWeight', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('grossWeight')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Poids net</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={formData.palettes[i]?.netWeight || ''}
-                            onChange={(e) => handlePaletteChange(i, 'netWeight', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('netWeight')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">N° Lot interne</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.internalLotNumber || ''}
-                            onChange={(e) => handlePaletteChange(i, 'internalLotNumber', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('internalLotNumber')}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-2 px-3 border">Conformité de la palette</td>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <td key={i} className="py-1 px-2 border">
-                          <input
-                            type="text"
-                            value={formData.palettes[i]?.paletteConformity || ''}
-                            onChange={(e) => handlePaletteChange(i, 'paletteConformity', e.target.value)}
-                            className="w-full p-1 border border-gray-200 rounded text-center"
-                          />
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border font-medium">{calculateAverages('paletteConformity')}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-          {/* Tolerance Tab */}
-{activeTab === 5 && (
-  <div className="overflow-x-auto mt-8">
-    <h2 className="text-lg font-semibold mb-4">Tolerance</h2>
-    <table className="min-w-full bg-white border-collapse">
+              <div className="overflow-x-auto mb-10">
+    <h2 className="text-xl font-bold text-green-700 mb-4">I) Contrôle du poids du colis</h2>
+    <table className="min-w-full bg-white border-collapse rounded-lg shadow-md">
       <thead>
-        <tr className="bg-gray-100">
-          <th className="py-2 px-3 border">Paramètre</th>
-          <th className="py-2 px-3 border">Résultat</th>
-          <th className="py-2 px-3 border">Conforme</th>
-          <th className="py-2 px-3 border">Non Conforme</th>
+        <tr className="bg-green-100">
+          <th className="py-2 px-3 border sticky left-0 bg-green-100 z-10">Paramètre</th>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
+          ))}
+          <th className="py-2 px-3 border bg-green-200">Moyenne</th>
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td className="py-2 px-3 border">Caractéristique minimale</td>
-          <td className="py-2 px-3 border">
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={formData.tolerance?.minCharacteristic || ''}
-              onChange={(e) => handleInputChange('tolerance.minCharacteristic', e.target.value)}
-              className="w-full p-1 border border-gray-200 rounded text-center"
-            />
-          </td>
-          <td className="py-2 px-3 border text-center">
-            <input
-              type="checkbox"
-              checked={formData.tolerance?.minCharacteristicConform || false}
-              onChange={(e) => handleInputChange('tolerance.minCharacteristicConform', e.target.checked)}
-            />
-          </td>
-          <td className="py-2 px-3 border text-center">
-            <input
-              type="checkbox"
-              checked={formData.tolerance?.minCharacteristicNonConform || false}
-              onChange={(e) => handleInputChange('tolerance.minCharacteristicNonConform', e.target.checked)}
-            />
-          </td>
+        {/* Poids du colis (kg) */}
+        <tr className="even:bg-gray-50">
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Poids du colis (kg)</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.palettes[i]?.packageWeight || ''}
+                onChange={(e) => handlePaletteChange(i, 'packageWeight', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium bg-green-50">{calculateAverages('packageWeight')}</td>
         </tr>
-
-        <tr>
-          <td className="py-2 px-3 border">Total des défauts catégorie 1</td>
-          <td className="py-2 px-3 border">
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={formData.tolerance?.category1Defects || ''}
-              onChange={(e) => handleInputChange('tolerance.category1Defects', e.target.value)}
-              className="w-full p-1 border border-gray-200 rounded text-center"
-            />
-          </td>
-          <td className="py-2 px-3 border text-center">
-            <input
-              type="checkbox"
-              checked={formData.tolerance?.category1DefectsConform || false}
-              onChange={(e) => handleInputChange('tolerance.category1DefectsConform', e.target.checked)}
-            />
-          </td>
-          <td className="py-2 px-3 border text-center">
-            <input
-              type="checkbox"
-              checked={formData.tolerance?.category1DefectsNonConform || false}
-              onChange={(e) => handleInputChange('tolerance.category1DefectsNonConform', e.target.checked)}
-            />
-          </td>
+        {/* Poids net requis (kg) */}
+        <tr className="even:bg-gray-50">
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Poids net requis (kg)</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.palettes[i]?.requiredNetWeight || ''}
+                onChange={(e) => handlePaletteChange(i, 'requiredNetWeight', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium bg-green-50">{calculateAverages('requiredNetWeight')}</td>
         </tr>
-
-        <tr>
-          <td className="py-2 px-3 border">Total des défauts catégorie 2</td>
-          <td className="py-2 px-3 border">
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={formData.tolerance?.category2Defects || ''}
-              onChange={(e) => handleInputChange('tolerance.category2Defects', e.target.value)}
-              className="w-full p-1 border border-gray-200 rounded text-center"
-            />
-          </td>
-          <td className="py-2 px-3 border text-center">
-            <input
-              type="checkbox"
-              checked={formData.tolerance?.category2DefectsConform || false}
-              onChange={(e) => handleInputChange('tolerance.category2DefectsConform', e.target.checked)}
-            />
-          </td>
-          <td className="py-2 px-3 border text-center">
-            <input
-              type="checkbox"
-              checked={formData.tolerance?.category2DefectsNonConform || false}
-              onChange={(e) => handleInputChange('tolerance.category2DefectsNonConform', e.target.checked)}
-            />
-          </td>
-        </tr>
-
-        <tr>
-          <td className="py-2 px-3 border">Total des défauts catégorie 3</td>
-          <td className="py-2 px-3 border">
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={formData.tolerance?.category3Defects || ''}
-              onChange={(e) => handleInputChange('tolerance.category3Defects', e.target.value)}
-              className="w-full p-1 border border-gray-200 rounded text-center"
-            />
-          </td>
-          <td className="py-2 px-3 border text-center">
-            <input
-              type="checkbox"
-              checked={formData.tolerance?.category3DefectsConform || false}
-              onChange={(e) => handleInputChange('tolerance.category3DefectsConform', e.target.checked)}
-            />
-          </td>
-          <td className="py-2 px-3 border text-center">
-            <input
-              type="checkbox"
-              checked={formData.tolerance?.category3DefectsNonConform || false}
-              onChange={(e) => handleInputChange('tolerance.category3DefectsNonConform', e.target.checked)}
-            />
+        {/* Poids net (%) - auto calculate and moyenne */}
+        <tr className="even:bg-gray-50">
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Poids net (%)</td>
+          {Array.from({ length: paletteCount }).map((_, i) => {
+            const pw = Number(formData.palettes[i]?.packageWeight || 0);
+            const rw = Number(formData.palettes[i]?.requiredNetWeight || 0);
+            const percent = pw && rw ? (((pw - rw) * 100) / pw) : '';
+            return (
+              <td key={i} className="py-1 px-2 border text-center">
+                {percent !== '' ? percent.toFixed(2) : ''}
+              </td>
+            );
+          })}
+          <td className="py-2 px-3 border font-medium bg-green-50">
+            {(() => {
+              let sum = 0, count = 0;
+              for (let i = 0; i < paletteCount; i++) {
+                const pw = Number(formData.palettes[i]?.packageWeight || 0);
+                const rw = Number(formData.palettes[i]?.requiredNetWeight || 0);
+                if (pw && rw) {
+                  sum += ((pw - rw) * 100) / pw;
+                  count++;
+                }
+              }
+              return count ? (sum / count).toFixed(2) : '';
+            })()}
           </td>
         </tr>
       </tbody>
     </table>
   </div>
-)}
-
-
-            {/* Final Table Tab */}
-            {activeTab === 6 && (
-              <div className="overflow-x-auto mt-8">
-                <h2 className="text-lg font-semibold mb-4">Final Table</h2>
-                <table className="min-w-full bg-white border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="py-2 px-3 border">Paramètre</th>
-                      {Array.from({ length: paletteCount }).map((_, i) => (
-                        <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
-                      ))}
-                      <th className="py-2 px-3 border">Moyenne</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Add rows as per requirements */}
-                  </tbody>
-                </table>
-              </div>
             )}
+            
+            {/* Controle des Caracteristiques minimales Tab */}
+            {activeTab === 2 && (
+              <div className="overflow-x-auto mb-10">
+    <h2 className="text-xl font-bold text-green-700 mb-4">II) Contrôle des caractéristiques minimales</h2>
+    <table className="min-w-full bg-white border-collapse rounded-lg shadow-md">
+      <thead>
+        <tr className="bg-green-100">
+          <th className="py-2 px-3 border sticky left-0 bg-green-100 z-10">Paramètre</th>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
+          ))}
+          <th className="py-2 px-3 border bg-green-200">Moyenne</th>
+        </tr>
+      </thead>
+      <tbody>
+        {/* Firmness (kgf) [13-14] (string input with Moyenne) */}
+        <tr>
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Firmness (kgf) [13-14]</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="text"
+                value={formData.palettes[i]?.firmness || ''}
+                onChange={(e) => handlePaletteChange(i, 'firmness', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">
+            {(() => {
+              const nums = formData.palettes
+                .map(p => parseFloat(p.firmness || ''))
+                .filter(v => !isNaN(v));
+              return nums.length ? (nums.reduce((a, b) => a + b, 0) / nums.length).toFixed(2) : '';
+            })()}
+          </td>
+        </tr>
+        {/* Pourriture (anthracnose) (%) */}
+        <tr>
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Pourriture (anthracnose) (%)</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.rotting || ''}
+                onChange={(e) => handlePaletteChange(i, 'rotting', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('rotting')}</td>
+        </tr>
+        {/* Matière étrangère visible (sable, les cheveux, ...) (%) */}
+        <tr>
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Matière étrangère visible (sable, les cheveux, ...) (%)</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.foreignMatter || ''}
+                onChange={(e) => handlePaletteChange(i, 'foreignMatter', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('foreignMatter')}</td>
+        </tr>
+        {/* Flétri (C/NC) */}
+        <tr>
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Flétri</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <select
+                value={formData.palettes[i]?.withered || ''}
+                onChange={(e) => handlePaletteChange(i, 'withered', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              >
+                <option value="">--</option>
+                <option value="C">Conforme</option>
+                <option value="NC">Non Conforme</option>
+              </select>
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+        {/* Endoderme durci (%) */}
+        <tr>
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Endoderme durci (%)</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.hardenedEndoderm || ''}
+                onChange={(e) => handlePaletteChange(i, 'hardenedEndoderm', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('hardenedEndoderm')}</td>
+        </tr>
+        {/* Présence de parasite (%) */}
+        <tr>
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Présence de parasite (%)</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.parasitePresence || ''}
+                onChange={(e) => handlePaletteChange(i, 'parasitePresence', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('parasitePresence')}</td>
+        </tr>
+        {/* Présence d’attaque de parasite (%) */}
+        <tr>
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Présence d’attaque de parasite (%)</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.parasiteAttack || ''}
+                onChange={(e) => handlePaletteChange(i, 'parasiteAttack', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('parasiteAttack')}</td>
+        </tr>
+        {/* Température (C/NC) */}
+        <tr>
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Température</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <select
+                value={formData.palettes[i]?.temperature || ''}
+                onChange={(e) => handlePaletteChange(i, 'temperature', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              >
+                <option value="">--</option>
+                <option value="C">Conforme</option>
+                <option value="NC">Non Conforme</option>
+              </select>
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+        {/* Odeur ou saveur d’étranger (C/NC) */}
+        <tr>
+          <td className="py-2 px-3 border sticky left-0 bg-white z-10 font-medium">Odeur ou saveur d’étranger</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <select
+                value={formData.palettes[i]?.odorOrTaste || ''}
+                onChange={(e) => handlePaletteChange(i, 'odorOrTaste', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              >
+                <option value="">--</option>
+                <option value="C">Conforme</option>
+                <option value="NC">Non Conforme</option>
+              </select>
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+            )}
+            
+            {/* Controle des Parametres Categorie I Tab */}
+            {activeTab === 3 && (
+              <div className="overflow-x-auto mb-10">
+    <h2 className="text-xl font-bold text-green-700 mb-4">III) Contrôle des caractéristiques spécifiques</h2>
+    <table className="min-w-full bg-white border-collapse rounded-lg shadow-md">
+      <thead>
+        <tr className="bg-green-100">
+          <th className="py-2 px-3 border">Paramètre</th>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
+          ))}
+          <th className="py-2 px-3 border bg-green-200">Moyenne</th>
+        </tr>
+      </thead>
+      <tbody>
+        {/* Défaut de forme (Moyenne) */}
+        <tr>
+          <td className="py-2 px-3 border">Défaut de forme</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.shapeDefect || ''}
+                onChange={(e) => handlePaletteChange(i, 'shapeDefect', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('shapeDefect')}</td>
+        </tr>
+        {/* Défaut de coloration (Moyenne) */}
+        <tr>
+          <td className="py-2 px-3 border">Défaut de coloration</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.colorDefect || ''}
+                onChange={(e) => handlePaletteChange(i, 'colorDefect', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('colorDefect')}</td>
+        </tr>
+        {/* Défaut d'épiderme (Moyenne) */}
+        <tr>
+          <td className="py-2 px-3 border">Défaut d'épiderme</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.epidermisDefect || ''}
+                onChange={(e) => handlePaletteChange(i, 'epidermisDefect', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('epidermisDefect')}</td>
+        </tr>
+        {/* Homogénéité (C/NC) */}
+        <tr>
+          <td className="py-2 px-3 border">Homogénéité (C/NC)</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="text"
+                value={formData.palettes[i]?.homogeneity || ''}
+                onChange={(e) => handlePaletteChange(i, 'homogeneity', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+        {/* Extrémité des grains (Moyenne) */}
+        <tr>
+          <td className="py-2 px-3 border">Extrémité des grains</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.corners || ''}
+                onChange={(e) => handlePaletteChange(i, 'corners', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('corners')}</td>
+        </tr>
+        {/* Manque et cassés */}
+        <tr>
+          <td className="py-2 px-3 border">Manque et cassés</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.missingBrokenGrains || ''}
+                onChange={(e) => handlePaletteChange(i, 'missingBrokenGrains', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('missingBrokenGrains')}</td>
+        </tr>
+        <tr>
+          <td className="py-2 px-3 border">Calibre</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.size || ''}
+                onChange={(e) => handlePaletteChange(i, 'size', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+            )}
+            
+            {/* Controle Produit Fini Tab */}
+            {activeTab === 4 && (
+              <div className="overflow-x-auto mb-10">
+    <h2 className="text-xl font-bold text-green-700 mb-4">IV) Contrôle du produit fini</h2>
+    <table className="min-w-full bg-white border-collapse rounded-lg shadow-md">
+      <thead>
+        <tr className="bg-green-100">
+          <th className="py-2 px-3 border">Paramètre</th>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <th key={i} className="py-2 px-3 border">Palette {i + 1}</th>
+          ))}
+          <th className="py-2 px-3 border bg-green-200">Moyenne</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td className="py-2 px-3 border">Calibre</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                value={formData.palettes[i]?.size || ''}
+                onChange={(e) => handlePaletteChange(i, 'size', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+        <tr>
+          <td className="py-2 px-3 border">Nombre de colis/palette</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                min="0"
+                value={formData.palettes[i]?.packageCount || ''}
+                onChange={(e) => handlePaletteChange(i, 'packageCount', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+        <tr>
+          <td className="py-2 px-3 border">État d'emballage</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="text"
+                value={formData.palettes[i]?.packagingState || ''}
+                onChange={(e) => handlePaletteChange(i, 'packagingState', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+        <tr>
+          <td className="py-2 px-3 border">Présence d'étiquetage</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="text"
+                value={formData.palettes[i]?.labelingPresence || ''}
+                onChange={(e) => handlePaletteChange(i, 'labelingPresence', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+        {/* Fiche palette (Moyenne) */}
+        <tr>
+          <td className="py-2 px-3 border">Fiche palette</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="text"
+                value={formData.palettes[i]?.paletteSheet || ''}
+                onChange={(e) => handlePaletteChange(i, 'paletteSheet', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('paletteSheet')}</td>
+        </tr>
+        {/* N° Lot interne (Moyenne) */}
+        <tr>
+          <td className="py-2 px-3 border">N° Lot interne</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="text"
+                value={formData.palettes[i]?.internalLotNumber || ''}
+                onChange={(e) => handlePaletteChange(i, 'internalLotNumber', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('internalLotNumber')}</td>
+        </tr>
+        {/* Conformité de la palette */}
+        <tr>
+          <td className="py-2 px-3 border">Conformité de la palette</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="text"
+                value={formData.palettes[i]?.paletteConformity || ''}
+                onChange={(e) => handlePaletteChange(i, 'paletteConformity', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium"></td>
+        </tr>
+        {/* Poids brut (Moyenne) */}
+        <tr>
+          <td className="py-2 px-3 border">Poids brut</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                min="0"
+                value={formData.palettes[i]?.grossWeight || ''}
+                onChange={(e) => handlePaletteChange(i, 'grossWeight', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('grossWeight')}</td>
+        </tr>
+        {/* Poids net (Moyenne) */}
+        <tr>
+          <td className="py-2 px-3 border">Poids net</td>
+          {Array.from({ length: paletteCount }).map((_, i) => (
+            <td key={i} className="py-1 px-2 border">
+              <input
+                type="number"
+                min="0"
+                value={formData.palettes[i]?.netWeight || ''}
+                onChange={(e) => handlePaletteChange(i, 'netWeight', e.target.value)}
+                className="w-full p-1 border border-gray-200 rounded text-center"
+              />
+            </td>
+          ))}
+          <td className="py-2 px-3 border font-medium">{calculateAverages('netWeight')}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+            )}
+            
+            {/* Tolérance Tab */}
+            {activeTab === 5 && (
+              <div className="overflow-x-auto mb-10">
+    <h2 className="text-xl font-bold text-green-700 mb-4">V) Tolérance</h2>
+    <table className="min-w-full bg-white border-collapse rounded-lg shadow-md">
+      <thead>
+        <tr className="bg-green-100">
+          <th className="py-2 px-3 border">Tolérance</th>
+          <th className="py-2 px-3 border">Résultat moyen</th>
+          <th className="py-2 px-3 border">Conforme</th>
+          <th className="py-2 px-3 border">Non conforme</th>
+        </tr>
+      </thead>
+      <tbody>
+        {/* Caractéristiques minimales (≤ 10%) */}
+        <tr>
+          <td className="py-2 px-3 border">Caractéristiques minimales (≤ 10%)</td>
+          <td className="py-1 px-2 border text-center">
+            {(() => {
+              // Sum of relevant fields for each palette, then average
+              let sum = 0, count = 0;
+              formData.palettes.forEach(p => {
+                const val =
+                  (parseFloat(p.rotting || '0') || 0) +
+                  (parseFloat(p.foreignMatter || '0') || 0) +
+                  (parseFloat(p.withered || '0') || 0) +
+                  (parseFloat(p.hardenedEndoderm || '0') || 0) +
+                  (parseFloat(p.parasitePresence || '0') || 0) +
+                  (parseFloat(p.parasiteAttack || '0') || 0);
+                sum += val;
+                count++;
+              });
+              return count ? (sum / count).toFixed(2) : '';
+            })()}
+          </td>
+          <td className="py-1 px-2 border"><input type="checkbox" className="mx-auto" /></td>
+          <td className="py-1 px-2 border"><input type="checkbox" className="mx-auto" /></td>
+        </tr>
+        {/* Total des défauts : catégorie I + caractéristiques minimales (≤ 10%) */}
+        <tr>
+          <td className="py-2 px-3 border">Total des défauts : catégorie I + caractéristiques minimales (≤ 10%)</td>
+          <td className="py-1 px-2 border text-center">
+            {(() => {
+              let sum = 0, count = 0;
+              formData.palettes.forEach(p => {
+                const minChar =
+                  (parseFloat(p.rotting || '0') || 0) +
+                  (parseFloat(p.foreignMatter || '0') || 0) +
+                  (parseFloat(p.withered || '0') || 0) +
+                  (parseFloat(p.hardenedEndoderm || '0') || 0) +
+                  (parseFloat(p.parasitePresence || '0') || 0) +
+                  (parseFloat(p.parasiteAttack || '0') || 0);
+                const catIDef =
+                  (parseFloat(p.shapeDefect || '0') || 0) +
+                  (parseFloat(p.colorDefect || '0') || 0) +
+                  (parseFloat(p.epidermisDefect || '0') || 0);
+                sum += minChar + catIDef;
+                count++;
+              });
+              return count ? (sum / count).toFixed(2) : '';
+            })()}
+          </td>
+          <td className="py-1 px-2 border"><input type="checkbox" className="mx-auto" /></td>
+          <td className="py-1 px-2 border"><input type="checkbox" className="mx-auto" /></td>
+        </tr>
+        {/* Extrémité des grains manques et cassées (≤ 10%) */}
+        <tr>
+          <td className="py-2 px-3 border">Extrémité des grains manques et cassées (≤ 10%)</td>
+          <td className="py-1 px-2 border text-center">
+            {(() => {
+              let sum = 0, count = 0;
+              formData.palettes.forEach(p => {
+                sum += parseFloat(p.missingBrokenGrains || '0') || 0;
+                count++;
+              });
+              return count ? (sum / count).toFixed(2) : '';
+            })()}
+          </td>
+          <td className="py-1 px-2 border"><input type="checkbox" className="mx-auto" /></td>
+          <td className="py-1 px-2 border"><input type="checkbox" className="mx-auto" /></td>
+        </tr>
+        {/* Poids selon le type d’emballage (poids net +1%) */}
+        <tr>
+          <td className="py-2 px-3 border">Poids selon le type d’emballage (poids net +1%)</td>
+          <td className="py-1 px-2 border text-center">
+            {(() => {
+              let sum = 0, count = 0;
+              formData.palettes.forEach(p => {
+                const pw = Number(p.packageWeight || 0);
+                const rw = Number(p.requiredNetWeight || 0);
+                if (pw && rw) {
+                  sum += ((pw - rw) * 100) / pw;
+                  count++;
+                }
+              });
+              return count ? (sum / count).toFixed(2) : '';
+            })()}
+          </td>
+          <td className="py-1 px-2 border"><input type="checkbox" className="mx-auto" /></td>
+          <td className="py-1 px-2 border"><input type="checkbox" className="mx-auto" /></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+   )}
           </div>
         </div>
       </div>

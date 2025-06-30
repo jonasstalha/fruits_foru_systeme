@@ -511,18 +511,6 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="icon" 
-                            onClick={() => {
-                              const newRole = prompt("Nouveau rôle (admin, operator, client):", user.role);
-                              if (newRole && ["admin", "operator", "client"].includes(newRole)) {
-                                updateUser(user.id, { role: newRole });
-                              }
-                            }}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
                           <Button variant="outline" size="icon" onClick={() => deleteUser(user.id)}>
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>

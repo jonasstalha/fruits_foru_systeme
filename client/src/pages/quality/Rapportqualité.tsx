@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Calendar, 
   Search, 
@@ -16,72 +16,68 @@ import {
   Target
 } from 'lucide-react';
 
+// Define the type for a lot/rapport
+interface QualityRapportLot {
+  id: string;
+  date: string;
+  controller: string;
+  palletNumber: string;
+  calibres: number[];
+  status: string;
+}
+
+const LOCAL_STORAGE_KEY = 'quality_rapports';
+const ARCHIVE_STORAGE_KEY = 'archived_reports';
+
 const Rapportqualité = () => {
-  const [selectedLot, setSelectedLot] = useState(null);
-  const [selectedCalibre, setSelectedCalibre] = useState(null);
+  const [submittedLots, setSubmittedLots] = useState<QualityRapportLot[]>([]);
+  const [selectedLot, setSelectedLot] = useState<QualityRapportLot | null>(null);
+  const [selectedCalibre, setSelectedCalibre] = useState<number | null>(null);
   const [filters, setFilters] = useState({
     dateFrom: '',
     dateTo: '',
     calibre: '',
     lotId: ''
   });
-  const [uploadedImages, setUploadedImages] = useState({});
-  const [testResults, setTestResults] = useState({});
-  const [inputMode, setInputMode] = useState('manual'); // 'manual' or 'image'
-  
-  const fileInputRef = useRef(null);
+  const [uploadedImages, setUploadedImages] = useState<Record<number, File[]>>({});
+  const [testResults, setTestResults] = useState<Record<number, any>>({});
+  const [inputMode, setInputMode] = useState<'manual' | 'image'>('manual');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Mock data for submitted lots
-  const submittedLots = [
-    {
-      id: 'LOT-2024-001',
-      date: '2024-05-18',
-      controller: 'John Smith',
-      palletNumber: 'PAL-001',
-      calibres: [12, 16, 18, 20, 22],
-      status: 'pending'
-    },
-    {
-      id: 'LOT-2024-002',
-      date: '2024-05-19',
-      controller: 'Sarah Johnson',
-      palletNumber: 'PAL-002',
-      calibres: [14, 16, 18, 20],
-      status: 'complete'
-    },
-    {
-      id: 'LOT-2024-003',
-      date: '2024-05-20',
-      controller: 'Mike Davis',
-      palletNumber: 'PAL-003',
-      calibres: [12, 14, 16, 18, 20, 22, 24,],
-      status: 'needs_revision'
+  useEffect(() => {
+    const savedRapports = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (savedRapports) {
+      try {
+        setSubmittedLots(JSON.parse(savedRapports));
+      } catch (e) {
+        setSubmittedLots([]);
+      }
+    } else {
+      setSubmittedLots([]);
     }
-  ];
+  }, []);
 
-  const filteredLots = submittedLots.filter(lot => {
+  const filteredLots = submittedLots.filter((lot) => {
     const matchesDateFrom = !filters.dateFrom || lot.date >= filters.dateFrom;
     const matchesDateTo = !filters.dateTo || lot.date <= filters.dateTo;
     const matchesCalibre = !filters.calibre || lot.calibres.includes(parseInt(filters.calibre));
     const matchesLotId = !filters.lotId || lot.id.toLowerCase().includes(filters.lotId.toLowerCase());
-    
     return matchesDateFrom && matchesDateTo && matchesCalibre && matchesLotId;
   });
 
-  const handleImageUpload = (calibre, files) => {
+  const handleImageUpload = (calibre: number, files: FileList) => {
     const fileArray = Array.from(files);
     if (fileArray.length > 12) {
       alert('Maximum 12 images allowed per calibre');
       return;
     }
-    
     setUploadedImages(prev => ({
       ...prev,
       [calibre]: fileArray
     }));
   };
 
-  const handleTestResultChange = (calibre, field, value) => {
+  const handleTestResultChange = (calibre: number, field: string, value: any) => {
     setTestResults(prev => ({
       ...prev,
       [calibre]: {
@@ -91,7 +87,7 @@ const Rapportqualité = () => {
     }));
   };
 
-  const handleTestImageUpload = (calibre, testType, file) => {
+  const handleTestImageUpload = (calibre: number, testType: string, file: File) => {
     setTestResults(prev => ({
       ...prev,
       [calibre]: {
@@ -101,16 +97,13 @@ const Rapportqualité = () => {
     }));
   };
 
-  const saveCaliberData = (calibre) => {
+  const saveCaliberData = (calibre: number) => {
     const images = uploadedImages[calibre] || [];
     const results = testResults[calibre] || {};
-    
     if (images.length !== 12) {
       alert('Please upload exactly 12 images for this calibre');
       return;
     }
-    
-    // Validation for test results
     if (inputMode === 'manual') {
       if (!results.poids || !results.firmness || !results.puree_image) {
         alert('Please complete all test results');
@@ -122,20 +115,58 @@ const Rapportqualité = () => {
         return;
       }
     }
-    
-    // Here you would save to your backend
+    // Save calibre data (could be extended to persist per lot)
     console.log('Saving calibre data:', { calibre, images, results });
     alert(`Data saved for calibre ${calibre}`);
+
+    // Check if all calibres for the selected lot are complete
+    if (selectedLot && Array.isArray(selectedLot.calibres)) {
+      const allComplete = selectedLot.calibres.every((cal) => {
+        const imgs = uploadedImages[cal] || [];
+        const res = testResults[cal] || {};
+        if (imgs.length !== 12) return false;
+        if (inputMode === 'manual') {
+          return res.poids && res.firmness && res.puree_image;
+        } else {
+          return res.poids_image && res.firmness_image && res.puree_image;
+        }
+      });
+      if (allComplete) {
+        // Archive the lot
+        const archiveObj = {
+          id: selectedLot.id,
+          lotId: selectedLot.id,
+          date: selectedLot.date,
+          controller: selectedLot.controller,
+          chief: 'N/A', // You can update this if you have chief info
+          calibres: selectedLot.calibres,
+          images: uploadedImages, // All images per calibre
+          testResults: testResults, // All test results per calibre
+          pdfController: null, // You can update this if you generate PDFs
+          pdfChief: null, // You can update this if you generate PDFs
+          status: 'Archived',
+          submittedAt: new Date().toISOString(),
+        };
+        const prev = JSON.parse(localStorage.getItem(ARCHIVE_STORAGE_KEY) || '[]');
+        // Avoid duplicate archive
+        if (!prev.some((r: any) => r.lotId === archiveObj.lotId)) {
+          prev.push(archiveObj);
+          localStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(prev));
+          alert('Lot archived and available in Archive & PDF Management!');
+        }
+      }
+    }
   };
 
-  const updateLotStatus = (status) => {
+  const updateLotStatus = (status: string) => {
+    if (!selectedLot) return;
     // Here you would update the lot status in your backend
     console.log('Updating lot status:', selectedLot.id, status);
-    setSelectedLot(prev => ({ ...prev, status }));
+    setSelectedLot(prev => prev ? { ...prev, status } : prev);
     alert(`Lot ${selectedLot.id} marked as ${status}`);
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case 'complete':
         return 'text-green-600 bg-green-100';
@@ -146,7 +177,7 @@ const Rapportqualité = () => {
     }
   };
 
-  const getStatusIcon = (status) => {
+  const getStatusIcon = (status: string) => {
     switch (status) {
       case 'complete':
         return <CheckCircle className="w-4 h-4" />;
@@ -398,42 +429,45 @@ const Rapportqualité = () => {
         <div className="bg-white rounded-lg shadow-sm border p-6">
           <h2 className="text-xl font-semibold mb-4">Calibres</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {selectedLot.calibres.map((calibre) => {
-              const images = uploadedImages[calibre] || [];
-              const results = testResults[calibre] || {};
-              const isComplete = images.length === 12 && 
-                (inputMode === 'manual' 
-                  ? results.poids && results.firmness && results.puree_image
-                  : results.poids_image && results.firmness_image && results.puree_image);
-              
-              return (
-                <button
-                  key={calibre}
-                  onClick={() => setSelectedCalibre(calibre)}
-                  className="p-4 border rounded-lg hover:bg-gray-50 transition-colors text-center"
-                >
-                  <div className="text-2xl font-bold mb-2">{calibre}</div>
-                  <div className="text-sm text-gray-600 mb-2">
-                    Images: {images.length}/12
-                  </div>
-                  <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                    isComplete ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {isComplete ? (
-                      <>
-                        <CheckCircle className="w-3 h-3" />
-                        Complete
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-3 h-3" />
-                        Pending
-                      </>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+            {Array.isArray(selectedLot.calibres) && selectedLot.calibres.length > 0 ? (
+              selectedLot.calibres.map((calibre, idx) => {
+                const images = uploadedImages[calibre] || [];
+                const results = testResults[calibre] || {};
+                const isComplete = images.length === 12 && 
+                  (inputMode === 'manual' 
+                    ? results.poids && results.firmness && results.puree_image
+                    : results.poids_image && results.firmness_image && results.puree_image);
+                return (
+                  <button
+                    key={calibre + '-' + idx}
+                    onClick={() => setSelectedCalibre(calibre)}
+                    className="p-4 border rounded-lg hover:bg-gray-50 transition-colors text-center"
+                  >
+                    <div className="text-2xl font-bold mb-2">{calibre}</div>
+                    <div className="text-sm text-gray-600 mb-2">
+                      Images: {images.length}/12
+                    </div>
+                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                      isComplete ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {isComplete ? (
+                        <>
+                          <CheckCircle className="w-3 h-3" />
+                          Complete
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-3 h-3" />
+                          Pending
+                        </>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="col-span-full text-gray-500">No calibres</div>
+            )}
           </div>
         </div>
       </div>
@@ -526,7 +560,7 @@ const Rapportqualité = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredLots.map((lot) => (
-                <tr key={lot.id} className="hover:bg-gray-50">
+                <tr key={lot.id || Math.random()} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {lot.id}
                   </td>
@@ -540,12 +574,14 @@ const Rapportqualité = () => {
                     {lot.palletNumber}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {lot.calibres.join(', ')}
+                    {Array.isArray(lot.calibres) ? lot.calibres.map((cal, idx) => (
+                      <span key={cal + '-' + idx}>{cal}{idx < lot.calibres.length - 1 ? ', ' : ''}</span>
+                    )) : 'N/A'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(lot.status)}`}>
                       {getStatusIcon(lot.status)}
-                      {lot.status.replace('_', ' ')}
+                      {typeof lot.status === 'string' ? lot.status.replace('_', ' ') : 'pending'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

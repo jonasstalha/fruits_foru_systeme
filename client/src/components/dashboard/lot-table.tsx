@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Eye, FileText, Printer, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -145,24 +145,12 @@ export default function LotTable({ lots, isLoading, farms }: LotTableProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      asChild
                       className="text-blue-500 hover:text-blue-700"
                       title="Voir détails"
+                      asChild
                     >
                       <Link href={`/lots/${lot.id}`}>
                         <Eye className="h-4 w-4" />
-                      </Link>
-                    </Button>
-                    
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-neutral-500 hover:text-neutral-700"
-                      title="Imprimer code-barres"
-                      asChild
-                    >
-                      <Link href={`/lots/${lot.id}/barcode`}>
-                        <Printer className="h-4 w-4" />
                       </Link>
                     </Button>
                   </TableCell>

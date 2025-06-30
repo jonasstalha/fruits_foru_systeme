@@ -19,47 +19,26 @@ import {
   Archive
 } from 'lucide-react';
 
-const Archivagedescontroles = () => {
-  // Mock data - in real app this would come from API
-  const [reports, setReports] = useState([
-    {
-      id: 1,
-      lotId: 'LOT-2024-001',
-      date: '2024-03-15',
-      controller: 'John Smith',
-      chief: 'Maria Garcia',
-      calibres: ['9mm', '.45 ACP'],
-      pdfController: 'controller_LOT-2024-001.pdf',
-      pdfChief: 'chief_LOT-2024-001.pdf',
-      status: 'Completed',
-      submittedAt: '2024-03-15 14:30'
-    },
-    {
-      id: 2,
-      lotId: 'LOT-2024-002',
-      date: '2024-03-14',
-      controller: 'Sarah Johnson',
-      chief: 'Roberto Martinez',
-      calibres: ['.38 Special'],
-      pdfController: 'controller_LOT-2024-002.pdf',
-      pdfChief: 'chief_LOT-2024-002.pdf',
-      status: 'Completed',
-      submittedAt: '2024-03-14 16:45'
-    },
-    {
-      id: 3,
-      lotId: 'LOT-2024-003',
-      date: '2024-03-13',
-      controller: 'Mike Wilson',
-      chief: 'Ana Rodriguez',
-      calibres: ['5.56mm', '.308'],
-      pdfController: 'controller_LOT-2024-003.pdf',
-      pdfChief: null,
-      status: 'Incomplete',
-      submittedAt: '2024-03-13 10:15'
-    }
-  ]);
+const ARCHIVE_STORAGE_KEY = 'archived_reports';
 
+// Add a type for archived reports
+interface ArchivedReport {
+  id: string;
+  lotId: string;
+  date: string;
+  controller: string;
+  chief: string;
+  calibres: (string | number)[];
+  images?: Record<string, any>;
+  testResults?: Record<string, any>;
+  pdfController?: string | null;
+  pdfChief?: string | null;
+  status: string;
+  submittedAt: string;
+}
+
+const Archivagedescontroles = () => {
+  const [reports, setReports] = useState<ArchivedReport[]>([]);
   // State management
   const [filteredReports, setFilteredReports] = useState(reports);
   const [searchTerm, setSearchTerm] = useState('');
@@ -71,9 +50,15 @@ const Archivagedescontroles = () => {
     calibre: '',
     status: ''
   });
-  const [editingReport, setEditingReport] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [editingReport, setEditingReport] = useState<ArchivedReport | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Load archived reports from localStorage on mount
+  useEffect(() => {
+    const archived = JSON.parse(localStorage.getItem(ARCHIVE_STORAGE_KEY) || '[]');
+    setReports(archived);
+  }, []);
 
   // Apply filters and search
   useEffect(() => {
@@ -119,58 +104,58 @@ const Archivagedescontroles = () => {
   }, [searchTerm, filters, reports]);
 
   // Handle edit
-  const handleEdit = (report) => {
-    setEditingReport({...report});
+  const handleEdit = (report: ArchivedReport) => {
+    setEditingReport({ ...report });
   };
 
   // Save edited report
   const saveEdit = () => {
-    setReports(prev => prev.map(report => 
-      report.id === editingReport.id ? editingReport : report
+    setReports((prev: ArchivedReport[]) => prev.map(report =>
+      editingReport && report.id === editingReport.id ? editingReport : report
     ));
     setEditingReport(null);
   };
 
   // Handle delete
-  const handleDelete = (reportId) => {
-    setReports(prev => prev.filter(report => report.id !== reportId));
+  const handleDelete = (reportId: string) => {
+    setReports((prev: ArchivedReport[]) => prev.filter(report => report.id !== reportId));
     setDeleteConfirm(null);
   };
 
   // Handle PDF download/view
-  const handlePdfAction = (pdfName, action) => {
+  const handlePdfAction = (pdfName: string, action: string) => {
     // In real app, this would download/view the actual PDF
     console.log(`${action} PDF: ${pdfName}`);
     alert(`${action}: ${pdfName}`);
   };
 
   // Status badge component
-  const StatusBadge = ({ status }) => {
-    const getStatusProps = (status) => {
+  const StatusBadge = ({ status }: { status: string }) => {
+    const getStatusProps = (status: string) => {
       switch (status) {
         case 'Completed':
-          return { 
-            bg: 'bg-green-100', 
-            text: 'text-green-800', 
-            icon: <Check className="w-3 h-3" /> 
+          return {
+            bg: 'bg-green-100',
+            text: 'text-green-800',
+            icon: <Check className="w-3 h-3" />
           };
         case 'Incomplete':
-          return { 
-            bg: 'bg-yellow-100', 
-            text: 'text-yellow-800', 
-            icon: <AlertTriangle className="w-3 h-3" /> 
+          return {
+            bg: 'bg-yellow-100',
+            text: 'text-yellow-800',
+            icon: <AlertTriangle className="w-3 h-3" />
           };
         case 'Archived':
-          return { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            icon: <Archive className="w-3 h-3" /> 
+          return {
+            bg: 'bg-gray-100',
+            text: 'text-gray-800',
+            icon: <Archive className="w-3 h-3" />
           };
         default:
-          return { 
-            bg: 'bg-gray-100', 
-            text: 'text-gray-800', 
-            icon: null 
+          return {
+            bg: 'bg-gray-100',
+            text: 'text-gray-800',
+            icon: null
           };
       }
     };
